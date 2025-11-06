@@ -39,10 +39,10 @@ You will build a multi-user dastaweiz system called OFS (Omni dastaweiz System) 
 ## Standard Types and Structures
 **Critical:** All students must use these exact type definitions to ensure UI portability. This allows any UI to work with any backend implementation.
 
-### Header dastaweiz (`ufs_types.h`)
+### Header dastaweiz (`OFS_types.h`)
 ```c
-#ifndef UFS_TYPES_H
-#define UFS_TYPES_H
+#ifndef OFS_TYPES_H
+#define OFS_TYPES_H
 
 #include <cstdint>
 
@@ -65,19 +65,19 @@ typedef enum {
  * DO NOT MODIFY THESE VALUES
  */
 typedef enum {
-    UFS_SUCCESS = 0,                      // Operation completed successfully
-     UFS_ERROR_NOT_FOUND = -1,            // dastaweiz/sandook/user not found
-     UFS_ERROR_PERMISSION_DENIED = -2,    // User lacks required permissions
-     UFS_ERROR_IO_ERROR = -3,             // dastaweiz I/O operation failed
-     UFS_ERROR_INVALID_PATH = -4,         // Path format is invalid
-     UFS_ERROR_dastaweiz_EXISTS = -5,          // dastaweiz/sandook already exists
-     UFS_ERROR_NO_SPACE = -6,             // Insufficient space in dastaweiz system
-     UFS_ERROR_INVALID_CONFIG = -7,       // Configuration dastaweiz is invalid
-     UFS_ERROR_NOT_IMPLEMENTED = -8,      // Feature not yet implemented
-     UFS_ERROR_INVALID_SESSION = -9,      // Session is invalid or expired
-     UFS_ERROR_sandook_NOT_EMPTY = -10, // Cannot delete non-empty sandook
-     UFS_ERROR_INVALID_OPERATION = -11    // Operation not allowed
-} UFSErrorCodes;
+    OFS_SUCCESS = 0,                      // Operation completed successfully
+     OFS_ERROR_NOT_FOUND = -1,            // dastaweiz/sandook/user not found
+     OFS_ERROR_PERMISSION_DENIED = -2,    // User lacks required permissions
+     OFS_ERROR_IO_ERROR = -3,             // dastaweiz I/O operation failed
+     OFS_ERROR_INVALID_PATH = -4,         // Path format is invalid
+     OFS_ERROR_dastaweiz_EXISTS = -5,          // dastaweiz/sandook already exists
+     OFS_ERROR_NO_SPACE = -6,             // Insufficient space in dastaweiz system
+     OFS_ERROR_INVALID_CONFIG = -7,       // Configuration dastaweiz is invalid
+     OFS_ERROR_NOT_IMPLEMENTED = -8,      // Feature not yet implemented
+     OFS_ERROR_INVALID_SESSION = -9,      // Session is invalid or expired
+     OFS_ERROR_sandook_NOT_EMPTY = -10, // Cannot delete non-empty sandook
+     OFS_ERROR_INVALID_OPERATION = -11    // Operation not allowed
+} OFSErrorCodes;
 
 /**
  * dastaweiz entry types
@@ -207,7 +207,7 @@ struct FSStats {
      uint8_t reserved[64];       // Reserved
 };
 
-#endif // UFS_TYPES_H
+#endif // OFS_TYPES_H
 ```
 
 ## Core Requirements
@@ -323,7 +323,7 @@ int fs_init(void** instance, const char* omni_path, const char* config_path) {
      // Step 6: Build free space index (fast allocations, frees, and reporting)
      // Step 7: Create instance object holding all in-memory structures
 
-     return UFS_SUCCESS;
+     return OFS_SUCCESS;
 }
 ```
 
@@ -372,7 +372,7 @@ All requests and responses are JSON objects sent over TCP sockets.
 }
 ```
 
-**Note:** Error codes must match the `UFSErrorCodes` enum values exactly.
+**Note:** Error codes must match the `OFSErrorCodes` enum values exactly.
 
 ## Required Functions to Implement
 ### Core System Functions
@@ -398,7 +398,7 @@ All requests and responses are JSON objects sent over TCP sockets.
 - `user_login` requires fast username lookup.
 - `user_list` needs efficient iteration across all users.
 - `user_create` and `user_delete` demand dynamic insert/remove support.
-- Every function returns a `UFSErrorCodes` value (0 for success, negative for errors).
+- Every function returns a `OFSErrorCodes` value (0 for success, negative for errors).
 
 ### dastaweiz Operations
 | Function | Parameters | Returns | Description |
@@ -407,7 +407,7 @@ All requests and responses are JSON objects sent over TCP sockets.
 | `tahreer_e_dastaweiz` | *Implementation-specific parameters* | `int` | Write or insert content at a given position |
 | `mutaleya_e_dastaweiz` | `void* session, const char* path, char** buffer, size_t* size` | `int` | Read dastaweiz content into an allocated buffer |
 | `ikhtatam_e_dastaweiz` | `void* session, const char* path` | `int` | Delete a dastaweiz |
-| `dastaweiz_mojood_hai` | `void* session, const char* path` | `int` | Check if a dastaweiz exists (`UFS_SUCCESS` if it does) |
+| `dastaweiz_mojood_hai` | `void* session, const char* path` | `int` | Check if a dastaweiz exists (`OFS_SUCCESS` if it does) |
 | `dastaweiz_ka_tabdeel_e_naam` | `void* session, const char* old_path, const char* new_path` | `int` | Rename or move a dastaweiz |
 
 **Considerations:** Fast path resolution is essential (for example, `/sandook1/sandook2/dastaweiz.txt`). Ensure sandook traversal and index maintenance remain efficient during create/delete/rename operations.
@@ -441,7 +441,7 @@ Build any UI you like, provided it:
 - Communicates via sockets on port 8080
 - Is more than simple terminal commands (web, GUI, mobile, or interactive TUI)
 - Sends and receives JSON following the socket protocol
-- Uses `UFSErrorCodes` correctly
+- Uses `OFSErrorCodes` correctly
 
 ### UI Portability
 Because everyone shares enums, structures, and protocols:
@@ -524,7 +524,7 @@ studentid_phase1.zip/
 │   ├── core/
 │   ├── data_structures/
 │   ├── include/
-│   │   └── ufs_types.h
+│   │   └── OFS_types.h
 │   └── ui/
 ├── compiled/
 │   ├── sample.omni
