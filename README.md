@@ -66,16 +66,16 @@ typedef enum {
  */
 typedef enum {
     UFS_SUCCESS = 0,                      // Operation completed successfully
-     UFS_ERROR_NOT_FOUND = -1,            // dastaweiz/directory/user not found
+     UFS_ERROR_NOT_FOUND = -1,            // dastaweiz/sandook/user not found
      UFS_ERROR_PERMISSION_DENIED = -2,    // User lacks required permissions
      UFS_ERROR_IO_ERROR = -3,             // dastaweiz I/O operation failed
      UFS_ERROR_INVALID_PATH = -4,         // Path format is invalid
-     UFS_ERROR_dastaweiz_EXISTS = -5,          // dastaweiz/directory already exists
+     UFS_ERROR_dastaweiz_EXISTS = -5,          // dastaweiz/sandook already exists
      UFS_ERROR_NO_SPACE = -6,             // Insufficient space in dastaweiz system
      UFS_ERROR_INVALID_CONFIG = -7,       // Configuration dastaweiz is invalid
      UFS_ERROR_NOT_IMPLEMENTED = -8,      // Feature not yet implemented
      UFS_ERROR_INVALID_SESSION = -9,      // Session is invalid or expired
-     UFS_ERROR_DIRECTORY_NOT_EMPTY = -10, // Cannot delete non-empty directory
+     UFS_ERROR_sandook_NOT_EMPTY = -10, // Cannot delete non-empty sandook
      UFS_ERROR_INVALID_OPERATION = -11    // Operation not allowed
 } UFSErrorCodes;
 
@@ -84,7 +84,7 @@ typedef enum {
  */
 typedef enum {
     ENTRY_TYPE_dastaweiz = 0,         // Regular dastaweiz
-     ENTRY_TYPE_DIRECTORY = 1     // Directory
+     ENTRY_TYPE_sandook = 1     // sandook
 } EntryType;
 
 /**
@@ -151,13 +151,13 @@ struct UserInfo {
 };  // Total: 128 bytes
 
 /**
- * dastaweiz/Directory Entry Structure
- * Used for directory listings and dastaweiz metadata
+ * dastaweiz/sandook Entry Structure
+ * Used for sandook listings and dastaweiz metadata
  */
 struct dastaweizEntry {
-     char name[256];             // dastaweiz/directory name (null-terminated)
-     uint8_t type;               // 0=dastaweiz, 1=directory (EntryType)
-     uint64_t size;              // Size in bytes (0 for directories)
+     char name[256];             // dastaweiz/sandook name (null-terminated)
+     uint8_t type;               // 0=dastaweiz, 1=sandook (EntryType)
+     uint64_t size;              // Size in bytes (0 for sandook)
      uint32_t permissions;       // UNIX-style permissions (e.g., 0644)
      uint64_t created_time;      // Creation timestamp (Unix epoch)
      uint64_t modified_time;     // Last modification timestamp (Unix epoch)
@@ -200,7 +200,7 @@ struct FSStats {
      uint64_t used_space;        // Space currently used
      uint64_t free_space;        // Available free space
      uint32_t total_dastaweizs;       // Total number of dastaweizs
-     uint32_t total_directories; // Total number of directories
+     uint32_t total_sandook; // Total number of sandook
      uint32_t total_users;       // Total number of users
      uint32_t active_sessions;   // Currently active sessions
      double fragmentation;       // Fragmentation percentage (0.0 - 100.0)
@@ -215,7 +215,7 @@ struct FSStats {
 All data must be stored in a single binary dastaweiz with `.omni` extension. Design and implement:
 - dastaweiz header structure using the standard `omniHeader`
 - User table storing `UserInfo` structures
-- dastaweiz/directory entries for metadata and content
+- dastaweiz/sandook entries for metadata and content
 - Data blocks for the actual dastaweiz content
 
 **Important:** Implement all data structures yourself. Do not rely on built-in dastaweiz system libraries.
@@ -278,16 +278,16 @@ Consider:
 
 **Example:** `user_login("john_doe", "password123")` must locate the user, verify the password hash, and establish a session. With 50 users, a linear scan may be too slow—opt for faster lookup.
 
-#### Challenge 2: dastaweiz and Directory Indexing
+#### Challenge 2: dastaweiz and sandook Indexing
 After users, load the dastaweiz system structure.
 
 Consider:
-- How to represent the directory tree in memory.
+- How to represent the sandook tree in memory.
 - Data structures enabling fast path lookup (for example, `/accounts/savings/john.txt`).
-- Efficient strategies for listing directory contents.
+- Efficient strategies for listing sandook contents.
 - Whether to use trees, graphs, or hybrid structures.
 
-**Example:** `dir_list("/accounts")` must find the directory, list children (dastaweizs and subdirectories), and return them as `dastaweizEntry` structures.
+**Example:** `sandook_list("/accounts")` must find the sandook, list children (dastaweizs and subsandook), and return them as `dastaweizEntry` structures.
 
 #### Challenge 3: Fast dastaweiz Lookup
 Every dastaweiz operation (create, read, delete) needs rapid metadata access.
@@ -329,7 +329,7 @@ int fs_init(void** instance, const char* omni_path, const char* config_path) {
 
 ### Key Design Questions
 - **User Structure Loading:** Load everything at startup or on demand? Which structure supports both lookup and iteration? How will you manage updates?
-- **Directory Tree Loading:** Eager or lazy load? How do you represent parent-child relationships? How will you traverse paths like `/a/b/c/dastaweiz.txt`?
+- **sandook Tree Loading:** Eager or lazy load? How do you represent parent-child relationships? How will you traverse paths like `/a/b/c/dastaweiz.txt`?
 - **dastaweiz Metadata Indexing:** Will you maintain an in-memory index? How do you map paths to disk? What keeps lookups fast?
 - **Memory vs. Disk Trade-offs:** What remains in memory versus on disk per operation? How do you balance memory usage with performance? When are changes persisted?
 
@@ -410,19 +410,19 @@ All requests and responses are JSON objects sent over TCP sockets.
 | `dastaweiz_mojood_hai` | `void* session, const char* path` | `int` | Check if a dastaweiz exists (`UFS_SUCCESS` if it does) |
 | `dastaweiz_ka_tabdeel_e_naam` | `void* session, const char* old_path, const char* new_path` | `int` | Rename or move a dastaweiz |
 
-**Considerations:** Fast path resolution is essential (for example, `/dir1/dir2/dastaweiz.txt`). Ensure directory traversal and index maintenance remain efficient during create/delete/rename operations.
+**Considerations:** Fast path resolution is essential (for example, `/sandook1/sandook2/dastaweiz.txt`). Ensure sandook traversal and index maintenance remain efficient during create/delete/rename operations.
 
-### Directory Operations
+### sandook Operations
 | Function | Parameters | Returns | Description |
 |----------|------------|---------|-------------|
-| `takhleek_e_dir` | `void* session, const char* path` | `int` | Create a directory |
-| `fehrist_nigari` | `void* session, const char* path, dastaweizEntry** entries, int* count` | `int` | List directory contents |
-| `ikhtatam_e_dir` | `void* session, const char* path` | `int` | Delete a directory (must be empty) |
-| `dir_mojood_hai` | `void* session, const char* path` | `int` | Check if a directory exists |
+| `takhleek_e_sandook` | `void* session, const char* path` | `int` | Create a sandook |
+| `fehrist_nigari` | `void* session, const char* path, dastaweizEntry** entries, int* count` | `int` | List sandook contents |
+| `ikhtatam_e_sandook` | `void* session, const char* path` | `int` | Delete a sandook (must be empty) |
+| `sandook_mojood_hai` | `void* session, const char* path` | `int` | Check if a sandook exists |
 
 **Considerations:**
-- `dir_list` must return child entries quickly.
-- `dir_delete` needs to confirm emptiness efficiently.
+- `sandook_list` must return child entries quickly.
+- `sandook_delete` needs to confirm emptiness efficiently.
 - Model parent-child relationships clearly in your structures.
 
 ### Information Functions
@@ -461,7 +461,7 @@ Produce the following documents:
 1. **Design Choices (`design_choices.md`)**
     - Data structures chosen and why
     - User indexing strategy
-    - Directory tree representation
+    - sandook tree representation
     - Free space tracking approach
     - Path-to-disk mapping
     - `.omni` dastaweiz layout (header, data blocks, indexing)
@@ -540,7 +540,7 @@ studentid_phase1.zip/
 ## Step-by-Step Plan
 1. **Design Data Structures First**
     - User storage, lookup, and iteration strategies
-    - Directory representation, path traversal, listing
+    - sandook representation, path traversal, listing
     - Free space tracking, allocation, fragmentation handling
     - Path-to-disk mapping with O(1) or O(log n) lookup
 
