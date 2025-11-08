@@ -1,235 +1,63 @@
-# OFS Project - Phase 1: Multi-User dastaweiz System
-## Student Documentation
+# OFS Project
+## Phase 1: Multi-User File System
 
-## Project Overview
-You will build a multi-user dastaweiz system called OFS (Omni dastaweiz System) that stores all data in a single `.omni` container dastaweiz. Multiple users can connect simultaneously through a socket-based server, and all operations are processed sequentially to ensure data consistency.
+### Project Overview
+You will build a multi-user file system called OFS (Omni File System) that stores all data in a single .omni container file. Multiple users can connect simultaneously through a socket-based server, and all operations are processed sequentially to ensure data consistency.
 
-> **Real-World Analogy:** Think of a bank where multiple tellers serve customers. Each transaction must complete fully before the next one begins, ensuring account balances are always accurate and consistent.
+**Real-World Analogy:** Think of a bank where multiple tellers serve customers. Each transaction must complete fully before the next one begins, ensuring account balances are always accurate and consistent.
 
-## Learning Objectives
-- Master dastaweiz I/O operations by reading from and writing to binary dastaweizs
-- Implement custom data structures to support your dastaweiz system
-- Understand socket programming to build client-server communication systems
-- Handle concurrency by processing multiple client requests using FIFO queuing
-- Design user interfaces that communicate with your backend
-
-## System Architecture
+### Rough System Architecture
 ```
-                    │
-         ┌──────────┴──────────┐
-         │   Socket Server     │
-         │   (Port 8080)       │
-         └──────────┬──────────┘
-                    │
-         ┌──────────┴──────────┐
-         │  FIFO Queue System  │
-         │  (Sequential)       │
-         └──────────┬──────────┘
-                    │
-         ┌──────────┴──────────┐
-         │  Your Core Logic    │
-         │  (dastaweiz Operations)  │
-         └──────────┬──────────┘
-                    │
-         ┌──────────┴──────────┐
-         │   student_id.omni   │
-         │    (Binary dastaweiz)    │
-         └─────────────────────┘
+           │
+┌──────────┴──────────┐
+│   Socket Server     │
+│   (Port XXXX)       │
+└──────────┬──────────┘
+           │
+┌──────────┴──────────┐
+│  FIFO Queue System  │
+│  (Sequential)       │
+└──────────┬──────────┘
+           │
+┌──────────┴──────────┐
+│  Your Core Logic    │
+│  (File Operations)  │
+└──────────┬──────────┘
+           │
+┌──────────┴──────────┐
+│   student_id.omni   │
+│   (Binary File)     │
+└─────────────────────┘
+```
 
-## Standard Types and Structures
-**Critical:** All students must use these exact type definitions to ensure UI portability. This allows any UI to work with any backend implementation.
+### Standard Types and Structures
+**CRITICAL:** All students must use these exact type definitions to ensure UI portability. This allows any UI to work with any backend implementation.
 
-### Header dastaweiz (`OFS_types.h`)
+**Header File (ofs_types.h)**
 ```c
-#ifndef OFS_TYPES_H
-#define OFS_TYPES_H
-
-#include <cstdint>
-
-// ============================================================================
-// ENUMERATIONS - DO NOT MODIFY THESE VALUES
-// ============================================================================
-
-/**
- * User role types
- * These values MUST remain consistent across all implementations
- */
-typedef enum {
-     ROLE_NORMAL = 0,    // Regular user with standard permissions
-     ROLE_ADMIN = 1      // Administrator with full permissions
-} UserRole;
-
-/**
- * Standard error codes
- * All functions return these codes to indicate operation status
- * DO NOT MODIFY THESE VALUES
- */
-typedef enum {
-    OFS_SUCCESS = 0,                      // Operation completed successfully
-     OFS_ERROR_NOT_FOUND = -1,            // dastaweiz/sandook/user not found
-     OFS_ERROR_PERMISSION_DENIED = -2,    // User lacks required permissions
-     OFS_ERROR_IO_ERROR = -3,             // dastaweiz I/O operation failed
-     OFS_ERROR_INVALID_PATH = -4,         // Path format is invalid
-     OFS_ERROR_dastaweiz_EXISTS = -5,          // dastaweiz/sandook already exists
-     OFS_ERROR_NO_SPACE = -6,             // Insufficient space in dastaweiz system
-     OFS_ERROR_INVALID_CONFIG = -7,       // Configuration dastaweiz is invalid
-     OFS_ERROR_NOT_IMPLEMENTED = -8,      // Feature not yet implemented
-     OFS_ERROR_INVALID_SESSION = -9,      // Session is invalid or expired
-     OFS_ERROR_sandook_NOT_EMPTY = -10, // Cannot delete non-empty sandook
-     OFS_ERROR_INVALID_OPERATION = -11    // Operation not allowed
-} OFSErrorCodes;
-
-/**
- * dastaweiz entry types
- */
-typedef enum {
-    ENTRY_TYPE_dastaweiz = 0,         // Regular dastaweiz
-     ENTRY_TYPE_sandook = 1     // sandook
-} EntryType;
-
-/**
- * dastaweiz permission flags (UNIX-style)
- */
-typedef enum {
-    PERM_OWNER_READ = 0400,      // Owner can read
-     PERM_OWNER_WRITE = 0200,     // Owner can write
-     PERM_OWNER_EXECUTE = 0100,   // Owner can execute
-     PERM_GROUP_READ = 0040,      // Group can read
-     PERM_GROUP_WRITE = 0020,     // Group can write
-     PERM_GROUP_EXECUTE = 0010,   // Group can execute
-     PERM_OTHERS_READ = 0004,     // Others can read
-     PERM_OTHERS_WRITE = 0002,    // Others can write
-     PERM_OTHERS_EXECUTE = 0001   // Others can execute
-} dastaweizPermissions;
-
-// ============================================================================
-// DATA STRUCTURES - MAINTAIN EXACT SIZES AND FIELD ORDER
-// ============================================================================
-
-/**
- * omni dastaweiz Header (512 bytes total)
- * Located at the beginning of every .omni dastaweiz
- *
- * CRITICAL: Do not modify field order or sizes - this must be consistent
- * across all implementations for dastaweiz compatibility
- */
-struct omniHeader {
-     char magic[8];              // Magic number: "omniFS01" (8 bytes)
-     uint32_t format_version;    // Format version: 0x00010000 for v1.0 (4 bytes)
-     uint64_t total_size;        // Total dastaweiz system size in bytes (8 bytes)
-     uint64_t header_size;       // Size of this header (8 bytes)
-     uint64_t block_size;        // Block size in bytes (8 bytes)
-
-     char student_id[32];        // Student ID who created this (32 bytes)
-     char submission_date[16];   // Creation date YYYY-MM-DD (16 bytes)
-
-     char config_hash[64];       // SHA-256 hash of config dastaweiz (64 bytes)
-     uint64_t config_timestamp;  // Config dastaweiz timestamp (8 bytes)
-
-     uint32_t user_table_offset; // Byte offset to user table (4 bytes)
-     uint32_t max_users;         // Maximum number of users (4 bytes)
-
-     // Reserved for Phase 2: Delta Vault
-     uint32_t dastaweiz_state_storage_offset;  // Offset to dastaweiz_state_storage area (4 bytes)
-     uint32_t change_log_offset;          // Offset to change log (4 bytes)
-
-     uint8_t reserved[328];      // Reserved for future use (328 bytes)
-};  // Total: 512 bytes
-
-/**
- * User Information Structure
- * Stored in user table within .omni dastaweiz
- */
-struct UserInfo {
-     char username[32];          // Username (null-terminated)
-     char password_hash[64];     // Password hash (SHA-256)
-     UserRole role;              // User role (4 bytes)
-     uint64_t created_time;      // Account creation timestamp (Unix epoch)
-     uint64_t last_login;        // Last login timestamp (Unix epoch)
-     uint8_t is_active;          // 1 if active, 0 if deleted
-     uint8_t reserved[23];       // Reserved for future use
-};  // Total: 128 bytes
-
-/**
- * dastaweiz/sandook Entry Structure
- * Used for sandook listings and dastaweiz metadata
- */
-struct dastaweizEntry {
-     char name[256];             // dastaweiz/sandook name (null-terminated)
-     uint8_t type;               // 0=dastaweiz, 1=sandook (EntryType)
-     uint64_t size;              // Size in bytes (0 for sandook)
-     uint32_t permissions;       // UNIX-style permissions (e.g., 0644)
-     uint64_t created_time;      // Creation timestamp (Unix epoch)
-     uint64_t modified_time;     // Last modification timestamp (Unix epoch)
-     char owner[32];             // Username of owner
-     uint32_t inode;             // Internal dastaweiz identifier
-     uint8_t reserved[47];       // Reserved for future use
-};  // Total: 416 bytes
-
-/**
- * dastaweiz Metadata (Extended information)
- * Returned by get_metadata function
- */
-struct dastaweizMetadata {
-     char path[512];             // Full path
-     dastaweizEntry entry;            // Basic entry information
-     uint64_t blocks_used;       // Number of blocks used
-     uint64_t actual_size;       // Actual size on disk (may differ from logical size)
-     uint8_t reserved[64];       // Reserved
-};
-
-/**
- * Session Information
- * Returned by get_session_info function
- */
-struct SessionInfo {
-     char session_id[64];        // Unique session identifier
-     UserInfo user;              // User information
-     uint64_t login_time;        // When session was created
-     uint64_t last_activity;     // Last activity timestamp
-     uint32_t operations_count;  // Number of operations performed
-     uint8_t reserved[32];       // Reserved
-};
-
-/**
- * dastaweiz System Statistics
- * Returned by get_stats function
- */
-struct FSStats {
-     uint64_t total_size;        // Total dastaweiz system size
-     uint64_t used_space;        // Space currently used
-     uint64_t free_space;        // Available free space
-     uint32_t total_dastaweizs;       // Total number of dastaweizs
-     uint32_t total_sandook; // Total number of sandook
-     uint32_t total_users;       // Total number of users
-     uint32_t active_sessions;   // Currently active sessions
-     double fragmentation;       // Fragmentation percentage (0.0 - 100.0)
-     uint8_t reserved[64];       // Reserved
-};
-
-#endif // OFS_TYPES_H
+// Standard type definitions would go here
 ```
 
-## Core Requirements
-### 1. dastaweiz System Container (`.omni`)
-All data must be stored in a single binary dastaweiz with `.omni` extension. Design and implement:
-- dastaweiz header structure using the standard `omniHeader`
-- User table storing `UserInfo` structures
-- dastaweiz/sandook entries for metadata and content
-- Data blocks for the actual dastaweiz content
+### Core Requirements
 
-**Important:** Implement all data structures yourself. Do not rely on built-in dastaweiz system libraries.
+#### 1. File System Container (.omni)
+All data must be stored in a single binary file with .omni extension. You must design:
+- File header structure - Use the standard OMNIHeader above
+- User table - Store UserInfo structures
+- File/directory entries - Store file metadata and content
+- Data blocks - Actual file content storage
 
-### 2. Configuration dastaweiz (`.uconf`)
-Create a configuration dastaweiz with the following structure:
+**Important:** You must implement all data structures yourself. Do not use existing file system libraries.
 
-```
-[dastaweizsystem]
+#### 2. Configuration File (.uconf)
+Create a configuration file that defines:
+```ini
+[filesystem]
 total_size = 104857600        # Total size in bytes (100MB)
-header_size = 512             # Header size (must match omniHeader)
+header_size = 512             # Header size (must match OMNIHeader)
 block_size = 4096             # Block size (4KB recommended)
-max_dastaweizs = 1000              # Maximum number of dastaweizs
-max_dastaweizname_length = 255     # Maximum dastaweizname length
+max_files = 1000              # Maximum number of files
+max_filename_length = 010     # Maximum filename length
 
 [security]
 max_users = 50                # Maximum number of users
@@ -243,125 +71,195 @@ max_connections = 20          # Maximum simultaneous connections
 queue_timeout = 30            # Maximum queue wait time (seconds)
 ```
 
-### 3. Socket-Based Server
+#### 3. Socket-Based Server
 Build a TCP socket server that:
-- Listens on port 8080 (or the configured port)
+- Listens on port 8080 (or configured port)
 - Accepts multiple client connections simultaneously
 - Receives JSON-formatted requests
 - Processes requests in FIFO (First-In-First-Out) order
 - Sends JSON-formatted responses
 
-### 4. FIFO Operation Queue
+#### 4. FIFO Operation Queue
 Implement a queue system where:
-- All incoming requests are enqueued
-- Operations are processed sequentially in arrival order
+- All incoming requests are added to a queue
+- Operations are processed one at a time in the order received
 - No two operations run simultaneously
 - Each operation completes fully before the next begins
 
-**Why FIFO?** This approach keeps consistency without complicated locking. No overlapping operations means fewer race conditions and easier reasoning about correctness.
+**Why FIFO?** This simple approach ensures data consistency without complex locking mechanisms. Since operations never overlap, you avoid race conditions and file corruption.
 
-## Critical Data Structure Decisions
-### Loading and Indexing the dastaweiz System
-At startup (`fs_init`), load the entire dastaweiz system into memory. Data structure choices drive performance.
+### Critical Data Structure Decisions
+
+#### Loading and Indexing the File System
+When your server starts (fs_init), you must load the entire file system into memory for fast access. This is where data structure choice becomes critical.
 
 #### Challenge 1: Loading Users from Disk
-Steps:
-1. Read the user table from the `.omni` dastaweiz (array of `UserInfo` structures).
-2. Load all users into memory.
-3. Enable fast lookup during login operations.
+When you call fs_init, you need to:
+- Read the user table from the .omni file (array of UserInfo structures)
+- Load all users into memory
+- Enable fast lookup during login operations
 
-Consider:
-- Data structures that enable O(1) or O(log n) lookup by username.
-- How to store users once loaded from disk.
-- Whether to keep users sorted, hashed, or arranged in a tree.
-- How to quickly verify user existence for permission checks.
+**Think about:**
+- What data structure would allow O(1) or O(log n) user lookup by username?
+- How will you store users in memory after reading them from disk?
+- Should you keep users sorted? Hashed? In a tree structure?
+- How will you handle the "admin checks permission" scenario where you need to verify if a user exists quickly?
 
-**Example:** `user_login("john_doe", "password123")` must locate the user, verify the password hash, and establish a session. With 50 users, a linear scan may be too slow—opt for faster lookup.
+**Example scenario to consider:**
+When user_login("john_doe", "password123") is called:
+1. You need to find john_doe in your loaded user structure
+2. Verify password hash
+3. Create session
 
-#### Challenge 2: dastaweiz and sandook Indexing
-After users, load the dastaweiz system structure.
+If you have 50 users, how quickly can you find john_doe?
+Linear search (O(n))? Or something faster?
 
-Consider:
-- How to represent the sandook tree in memory.
-- Data structures enabling fast path lookup (for example, `/accounts/savings/john.txt`).
-- Efficient strategies for listing sandook contents.
-- Whether to use trees, graphs, or hybrid structures.
+#### Challenge 2: File and Directory Indexing
+After loading users, you must load the file system structure:
 
-**Example:** `sandook_list("/accounts")` must find the sandook, list children (dastaweizs and subsandook), and return them as `dastaweizEntry` structures.
+**Think about:**
+- How will you represent the directory tree in memory?
+- What structure allows fast path lookup? (e.g., /accounts/savings/john.txt)
+- How will you handle listing all files in a directory efficiently?
+- Should you use a tree? A graph? Multiple structures working together?
 
-#### Challenge 3: Fast dastaweiz Lookup
-Every dastaweiz operation (create, read, delete) needs rapid metadata access.
+**Example scenario to consider:**
+When dir_list("/accounts") is called:
+- Need to find the "accounts" directory
+- List all its children (files and subdirectories)
+- Return them as an array of FileEntry structures
 
-Consider:
-- Mapping dastaweiz paths to `.omni` locations.
-- Structures that deliver O(1) metadata lookup.
-- Tracking free blocks efficiently.
-- Whether to maintain single or multiple indices.
+What structure makes this efficient?
 
-**Example:** `dastaweiz_read("/reports/daily.txt")` needs metadata, block locations, and content retrieval—all quickly.
+#### Challenge 3: Fast File Lookup
+When a file operation occurs (create, read, delete), you need instant access to file metadata:
+
+**Think about:**
+- How will you map file paths to their location in the .omni file?
+- What structure enables O(1) lookup of file metadata by path?
+- How will you track free blocks in the file system?
+- Should you maintain an index? A table? Multiple indices?
+
+**Example scenario to consider:**
+When file_read("/reports/daily.txt") is called:
+1. Find the file metadata (where is it in .omni?)
+2. Read the actual data blocks
+3. Return content to user
+
+Fast lookup of "/reports/daily.txt" → block location is essential
 
 #### Challenge 4: Free Space Management
-Track available space as dastaweizs change.
+As files are created and deleted, you need to track available space:
 
-Consider:
-- Identifying free blocks in the `.omni` dastaweiz.
-- Data structures for allocating N consecutive blocks quickly.
-- Handling fragmentation over time.
-- Choosing between bitmaps, free lists, or trees of free regions.
+**Think about:**
+- How will you know which blocks in the .omni file are free?
+- What structure allows quick allocation of N consecutive blocks?
+- How will you handle fragmentation over time?
+- Should you use a bitmap? A free list? A tree of free regions?
 
-**Example:** When `dastaweiz_create` needs 10 blocks, locate them fast, mark them used, and update free space structures.
+**Example scenario to consider:**
+When file_create needs 10 blocks:
+- Find 10 free blocks quickly
+- Mark them as used
+- Update your free space structure
 
-### dastaweiz System Loading Strategy
-#### The `fs_init` Process
+What structure makes finding N free blocks fast?
+
+### File System Loading Strategy
+
+#### The fs_init Process
+When your system starts, you must efficiently load everything into memory:
+
 ```c
 int fs_init(void** instance, const char* omni_path, const char* config_path) {
-     // Step 1: Read configuration
-     // Step 2: Open .omni dastaweiz (keep handle open or open/close per operation?)
-     // Step 3: Read and validate header (check magic number)
-     // Step 4: Load user table into memory (fast lookup, iteration, dynamic updates)
-     // Step 5: Build dastaweiz system index (efficient traversal, listing, path resolution)
-     // Step 6: Build free space index (fast allocations, frees, and reporting)
-     // Step 7: Create instance object holding all in-memory structures
-
-     return OFS_SUCCESS;
+    // Step 1: Read configuration
+    // Think about: How do you parse and store config values?
+    
+    // Step 2: Open .omni file
+    // Think about: Keep file handle open or open/close per operation?
+    
+    // Step 3: Read and validate header (OMNIHeader structure)
+    // Think about: What if header is corrupted? Check magic number?
+    
+    // Step 4: Load user table into memory
+    // CRITICAL: What data structure do you use here?
+    // - Need fast lookup by username
+    // - Need to iterate all users (for admin list operation)
+    // - Need to add/remove users dynamically
+    // - Users are stored as UserInfo structures on disk
+    
+    // Step 5: Build file system index
+    // CRITICAL: What structure represents your directory tree?
+    // - Need to traverse paths efficiently
+    // - Need to list directory contents (return FileEntry arrays)
+    // - Need to find files by full path quickly
+    
+    // Step 6: Build free space index
+    // CRITICAL: How do you track available blocks?
+    // - Need to allocate space quickly
+    // - Need to free space when files are deleted
+    // - Need to report total free space
+    
+    // Step 7: Create instance object
+    // This holds all your in-memory structures
+    
+    return OFS_SUCCESS;
 }
 ```
 
-### Key Design Questions
-- **User Structure Loading:** Load everything at startup or on demand? Which structure supports both lookup and iteration? How will you manage updates?
-- **sandook Tree Loading:** Eager or lazy load? How do you represent parent-child relationships? How will you traverse paths like `/a/b/c/dastaweiz.txt`?
-- **dastaweiz Metadata Indexing:** Will you maintain an in-memory index? How do you map paths to disk? What keeps lookups fast?
-- **Memory vs. Disk Trade-offs:** What remains in memory versus on disk per operation? How do you balance memory usage with performance? When are changes persisted?
+#### Key Questions to Answer in Your Design
 
-## Socket Communication Protocol
-All requests and responses are JSON objects sent over TCP sockets.
+**User Structure Loading:**
+- Do you load all users at startup or on-demand?
+- What structure allows both fast lookup AND iteration?
+- How do you handle user updates (add/delete)?
 
-### Request Format
+**Directory Tree Loading:**
+- Do you load the entire tree or build it lazily?
+- How do you represent parent-child relationships?
+- What enables fast path traversal (e.g., /a/b/c/file.txt)?
+
+**File Metadata Indexing:**
+- Do you create an in-memory index of all files?
+- How do you map paths to physical locations in .omni?
+- What structure minimizes lookup time?
+
+**Memory vs. Disk Trade-offs:**
+- What stays in memory vs. what's read from disk per operation?
+- How do you balance memory usage with performance?
+- When do you write changes back to disk?
+
+### Socket Communication Protocol
+
+#### Message Format
+All messages are JSON objects sent over TCP sockets.
+
+**Request Format:**
 ```json
 {
   "operation": "operation_name",
   "session_id": "user_session_id",
   "parameters": {
-     "param1": "value1",
-     "param2": "value2"
+    "param1": "value1",
+    "param2": "value2"
   },
   "request_id": "unique_request_id"
 }
 ```
 
-### Response Format
+**Response Format:**
 ```json
 {
   "status": "success",
   "operation": "operation_name",
   "request_id": "unique_request_id",
   "data": {
-     "result_data": "value"
+    "result_data": "value"
   }
 }
 ```
 
-### Error Response
+**Error Response:**
 ```json
 {
   "status": "error",
@@ -372,240 +270,315 @@ All requests and responses are JSON objects sent over TCP sockets.
 }
 ```
 
-**Note:** Error codes must match the `OFSErrorCodes` enum values exactly.
+**Note:** Error codes must match the OFSErrorCodes enum values exactly.
 
-## Required Functions to Implement
-### Core System Functions
+### Required Functions to Implement
+
+#### Core System Functions
+
 | Function | Parameters | Returns | Description |
 |----------|------------|---------|-------------|
-| `aghaz_nizame_dastaweiz` | `void** instance, const char* omni_path, const char* config_path` | `int` | Initialize dastaweiz system and load all structures into memory |
-| `ikhtatam_nizam_e_dastaweiz` | `void* instance` | `void` | Clean up and shut down the dastaweiz system |
-| `takhleek_nizam_e_dastaweiz` | `const char* omni_path, const char* config_path` | `int` | Create a new `.omni` dastaweiz using the provided configuration |
+| fs_init | void** instance, const char* omni_path, const char* config_path | int | Initialize file system, load all structures into memory |
+| fs_shutdown | void* instance | void | Cleanup and shutdown file system |
+| fs_format | const char* omni_path, const char* config_path | int | Create new .omni file with specified configuration |
 
-**Design Note:** `fs_init` must load users, dastaweizs, and free space. Choose structures with fast access while minimizing startup time.
+**Data Structure Consideration for fs_init:**
+- This function must load users, files, and free space information
+- Think about which structures will be accessed frequently
+- Consider the trade-off between loading speed and operation speed
 
-### User Management Functions
+#### User Management Functions
+
 | Function | Parameters | Returns | Who Can Use |
 |----------|------------|---------|-------------|
-| `sarif_ka_dakhila` | `void** session, const char* username, const char* password` | `int` | Anyone — create a new user session |
-| `sarif_ka_khrooj` | `void* session` | `int` | Logged-in users — end session |
-| `sarif_ka_indaraaj` | `void* admin_session, const char* username, const char* password, UserRole role` | `int` | Admin only — create new user account |
-| `ikhtataam_e_sarif` | `void* admin_session, const char* username` | `int` | Admin only — remove user account |
-| `sareefeen_ki_fehrist_nigari` | `void* admin_session, UserInfo** users, int* count` | `int` | Admin only — list all users |
-| `sargarmiyon_ki_tafseel` | `void* session, SessionInfo* info` | `int` | Logged-in users — get session details |
+| user_login | void** session, const char* username, const char* password | int | Anyone - Create new user session |
+| user_logout | void* session | int | Logged-in users - End session |
+| user_create | void* admin_session, const char* username, const char* password, UserRole role | int | Admin only - Create new user account |
+| user_delete | void* admin_session, const char* username | int | Admin only - Remove user account |
+| user_list | void* admin_session, UserInfo** users, int* count | int | Admin only - Get list of all users |
+| get_session_info | void* session, SessionInfo* info | int | Logged-in users - Get current session details |
 
-**Considerations:**
-- `user_login` requires fast username lookup.
-- `user_list` needs efficient iteration across all users.
-- `user_create` and `user_delete` demand dynamic insert/remove support.
-- Every function returns a `OFSErrorCodes` value (0 for success, negative for errors).
+**Data Structure Consideration:**
+- user_login: Needs fast username lookup - think about optimal structure
+- user_list: Needs to iterate all users and return array of UserInfo - structure must support this
+- user_create/user_delete: Needs dynamic add/remove - structure must handle this efficiently
+- Return Values: All functions return OFSErrorCodes values (0 for success, negative for errors)
 
-### dastaweiz Operations
+#### File Operations
+
 | Function | Parameters | Returns | Description |
 |----------|------------|---------|-------------|
-| `takhleek_e_dastaweiz` | `void* session, const char* path, const char* data, size_t size` | `int` | Create a new dastaweiz with initial data |
-| `tahreer_e_dastaweiz` | *Implementation-specific parameters* | `int` | Write or insert content at a given position |
-| `mutaleya_e_dastaweiz` | `void* session, const char* path, char** buffer, size_t* size` | `int` | Read dastaweiz content into an allocated buffer |
-| `ikhtatam_e_dastaweiz` | `void* session, const char* path` | `int` | Delete a dastaweiz |
-| `dastaweiz_mojood_hai` | `void* session, const char* path` | `int` | Check if a dastaweiz exists (`OFS_SUCCESS` if it does) |
-| `dastaweiz_ka_tabdeel_e_naam` | `void* session, const char* old_path, const char* new_path` | `int` | Rename or move a dastaweiz |
+| file_create | void* session, const char* path, const char* data, size_t size | int | Create new file with initial data |
+| file_read | void* session, const char* path, char** buffer, size_t* size | int | Read file content into allocated buffer |
+| file_edit | void* session, const char* path, const char* data, size_t size, uint index | int | Writes at the given index of the file. |
+| file_delete | void* session, const char* path | int | Delete specified file |
+| file_truncate | void* session, const char* path | int | Remove the content of the file and write siruamr on the complete file. |
+| file_exists | void* session, const char* path | int | Check if file exists (returns OFS_SUCCESS if exists) |
+| file_rename | void* session, const char* old_path, const char* new_path | int | Rename/move file |
 
-**Considerations:** Fast path resolution is essential (for example, `/sandook1/sandook2/dastaweiz.txt`). Ensure sandook traversal and index maintenance remain efficient during create/delete/rename operations.
+**Data Structure Consideration:**
+- All file operations need fast path resolution (/dir1/dir2/file.txt → file location)
+- Think about how to traverse directory paths efficiently
+- Consider how to update indices when files are created/deleted/renamed
 
-### sandook Operations
+#### Directory Operations
+
 | Function | Parameters | Returns | Description |
 |----------|------------|---------|-------------|
-| `takhleek_e_sandook` | `void* session, const char* path` | `int` | Create a sandook |
-| `fehrist_nigari` | `void* session, const char* path, dastaweizEntry** entries, int* count` | `int` | List sandook contents |
-| `ikhtatam_e_sandook` | `void* session, const char* path` | `int` | Delete a sandook (must be empty) |
-| `sandook_mojood_hai` | `void* session, const char* path` | `int` | Check if a sandook exists |
+| dir_create | void* session, const char* path | int | Create new directory |
+| dir_list | void* session, const char* path, FileEntry** entries, int* count | int | Get list of files in directory |
+| dir_delete | void* session, const char* path | int | Delete directory (must be empty) |
+| dir_exists | void* session, const char* path | int | Check if directory exists |
 
-**Considerations:**
-- `sandook_list` must return child entries quickly.
-- `sandook_delete` needs to confirm emptiness efficiently.
-- Model parent-child relationships clearly in your structures.
+**Data Structure Consideration:**
+- dir_list: Needs to efficiently retrieve all children of a directory and return as FileEntry array
+- dir_delete: Must verify directory is empty - how to check this quickly?
+- Think about how to represent parent-child relationships in your structure
 
-### Information Functions
+#### Information Functions
+
 | Function | Parameters | Returns | Description |
 |----------|------------|---------|-------------|
-| `hasil_e_maloomat` | `void* session, const char* path, dastaweizMetadata* meta` | `int` | Retrieve detailed dastaweiz information |
-| `tabdeel_e_ijazat` | `void* session, const char* path, uint32_t permissions` | `int` | Change dastaweiz permissions |
-| `maaloomat_e_halat` | `void* session, FSStats* stats` | `int` | Obtain dastaweiz system statistics |
-| `kharij_e_buffer` | `void* buffer` | `void` | Free memory allocated by `dastaweiz_read` |
-| `kotahi_ka_intebah` | `int error_code` | `const char*` | Get human-readable error messages |
+| get_metadata | void* session, const char* path, FileMetadata* meta | int | Get detailed file information |
+| set_permissions | void* session, const char* path, uint32_t permissions | int | Change file permissions |
+| get_stats | void* session, FSStats* stats | int | Get file system statistics |
+| free_buffer | void* buffer | void | Free memory allocated by file_read |
+| get_error_message | int error_code | const char* | Get descriptive error message |
 
-**Considerations:** `get_stats` should report totals swiftly. Decide whether to cache stats or maintain running counters.
+**Data Structure Consideration:**
+- get_stats: Needs to quickly compute total files, total size, free space - returns FSStats structure
+- Think about whether to cache statistics or compute them on-demand
+- Consider maintaining summary counters that update with each operation
 
-## User Interface Requirements
-Build any UI you like, provided it:
-- Communicates via sockets on port 8080
-- Is more than simple terminal commands (web, GUI, mobile, or interactive TUI)
-- Sends and receives JSON following the socket protocol
-- Uses `OFSErrorCodes` correctly
+### User Interface Requirements
 
-### UI Portability
-Because everyone shares enums, structures, and protocols:
-- Test your backend with other students’ UIs
-- Allow instructors to reuse a standard testing UI
-- Collaborate on UIs while focusing on backend functionality
+You are free to create any type of UI using any programming language or framework. The only requirements are:
+- Must communicate via sockets - Connect to your server on port 8080
+- Cannot be simple terminal commands - Must have a graphical or web-based interface
+- Must send/receive JSON messages - Follow the socket protocol
+- Must use standard error codes - Interpret OFSErrorCodes values correctly
 
-### UI Options (Examples)
-- Web: HTML/CSS/JavaScript, React, Vue, Angular
-- Desktop: Python (Tkinter/PyQt), Java (JavaFX), C# (WinForms/WPF)
-- Mobile: React Native, Flutter, Android/iOS native
-- Terminal UI: Rich/Textual (Python), ncurses (C/C++) — must remain interactive
+#### UI Portability
+Because all implementations use the same:
+- Error codes (OFSErrorCodes)
+- User roles (UserRole)
+- Structure definitions (UserInfo, FileEntry, etc.)
+- Socket protocol (JSON format)
 
-## Documentation Requirements
-Produce the following documents:
+Your UI can work with ANY student's backend implementation! This means:
+- You can test your backend with other students' UIs
+- The teacher can use a standard testing UI across all submissions
+- You can collaborate on UI development while focusing on backend
 
-1. **Design Choices (`design_choices.md`)**
-    - Data structures chosen and why
-    - User indexing strategy
-    - sandook tree representation
-    - Free space tracking approach
-    - Path-to-disk mapping
-    - `.omni` dastaweiz layout (header, data blocks, indexing)
-    - Memory management strategies and optimizations
+**UI Options (Examples):**
+- Web Interface: HTML/CSS/JavaScript, React, Vue, Angular
+- Desktop Application: Python (Tkinter/PyQt), Java (JavaFX), C# (WinForms/WPF)
+- Mobile App: React Native, Flutter, Android/iOS native
+- Terminal UI: Rich/Textual (Python), ncurses (C/C++) - Must have interactive UI, not just commands
 
-    *Example:* “I chose a hash table for user indexing because `user_login` requires O(1) lookup by username. The hash table maps username → `UserInfo`. Collisions use chained lists.”
+### Documentation Requirements
 
-2. **dastaweiz I/O Strategy (`dastaweiz_io_strategy.md`)**
-    - `.omni` read/write process
-    - Serialization/deserialization of `omniHeader`, `UserInfo`, `dastaweizEntry`
-    - Buffering and dastaweiz growth strategies
-    - Free space management and data integrity
-    - Memory vs. disk decisions per operation
+You must document your implementation choices. Create these documents:
 
-3. **FIFO Queue Implementation (`fifo_workflow.md`)**
-    - Queue design
-    - Thread/process management
-    - Request queuing and processing steps
-    - Response delivery flow
+#### 1. Design Choices Document (design_choices.md)
+Explain:
+- Data structures chosen and WHY
+- What structure did you use for user indexing and why?
+- How do you represent the directory tree?
+- What structure tracks free space?
+- How do you map file paths to disk locations?
+- How you structured the .omni file (header, data blocks, indexing)
+- Memory management strategies
+- Any optimizations you made
 
-4. **User Guide (`user_guide.md`)**
-    - Build/run instructions for the server
-    - UI usage instructions and screenshots
-    - Configuration details
+**Example of what we're looking for:**
+```
+"I chose a hash table for user indexing because user_login requires 
+O(1) lookup by username. The hash table maps username → UserInfo 
+structure. For collision handling, I used chaining with linked lists..."
+```
 
-5. **Testing Report (`testing_report.md`)**
-    - Test scenarios executed
-    - Performance metrics (ops/sec, latency)
-    - Concurrent client testing
-    - Edge cases covered
-    - Cross-compatibility testing results
+#### 2. File I/O Strategy Document (file_io_strategy.md)
+Describe:
+- How you read from and write to the .omni file
+- How you serialize/deserialize standard structures (OMNIHeader, UserInfo, FileEntry)
+- Buffering strategies
+- How you handle file growth
+- How you manage free space
+- Approach to data integrity
+- What gets loaded into memory vs. read from disk per operation
 
-## Looking Ahead: Phase 2 — Delta Vault
-Phase 2 introduces dastaweiz history tracking. Plan for it now.
+#### 3. FIFO Queue Implementation (fifo_workflow.md)
+Document:
+- How your operation queue works
+- Thread/process management approach
+- How requests are queued and processed
+- How responses are sent back to clients
 
-### What Is Delta Vault?
-Each modification stores a delta instead of the whole dastaweiz, maintains history, tracks who made changes, and allows rollback to any previous state.
+#### 4. User Guide (user_guide.md)
+Provide:
+- How to compile and run your server
+- How to use your UI
+- Sample operations with screenshots
+- Configuration options
 
-### Concepts to Consider
-1. **Metadata Storage:** Where in `.omni` will you keep history metadata? How will you link states to dastaweizs? Which structure represents history efficiently?
-2. **Delta Storage:** How will you store only differences? How will you rebuild dastaweizs from deltas? Are forward or backward deltas better?
-3. **Change Tracking:** What details (timestamp, user, path, change type) must you log? Will the change log live in memory, on disk, or both?
-4. **Retrieval:** How will you quickly access all states of a dastaweiz? What structure supports “get state N of dastaweiz.txt”? How will you manage chains (`s1 → s2 → s3`)?
+#### 5. Testing Report (testing_report.md)
+Include:
+- Test scenarios you ran
+- Performance metrics (operations per second, response times)
+- Concurrent client testing results
+- Edge cases tested
+- Cross-compatibility testing (if you tested with other students' backends/UIs)
 
-### Phase 1 Design Tips for Phase 2
-- Use reserved header fields for future state metadata
-- Structure dastaweiz storage to accommodate delta data
-- Anticipate index expansion to support history
-- Consider history requirements when planning free space management
+### Looking Ahead: Phase 2 - Delta Vault
 
-**Example foresight:** “My dastaweiz metadata includes a pointer (currently `NULL`) reserved for history. I mark 20% of blocks as ‘reserved’ to prepare for delta storage.”
+Phase 2 will introduce tacking your file system. While you don't need to implement this now, start thinking about these concepts:
 
-## Submission Structure
-Submit `<figure_out>.zip` with the following layout (hint: use `PHASE-1`):
+#### What is Delta Vault?
+Delta Vault is a system integrated into your file system. Every time a file is modified, the system:
+- Stores only the changes (deltas) - not entire file copies
+- Maintains history - can view/restore any previous state
+- Tracks who made changes - audit trail of all modifications
+- Enables rollback - restore files to any previous state
+
+#### Core Concepts to Consider Now
+Even though Phase 2 is later, think about:
+
+1. **Metadata Storage:**
+   - Where in your .omni file will you store this information?
+   - Notice the fields in the struct, these are reserved for Phase 2
+   - How will you link states to files?
+   - What data structure represents history properly?
+
+2. **Delta Storage:**
+   - How will you store only the differences between states?
+   - How will you reconstruct a file from multiple deltas?
+   - What's more efficient: forward deltas or backward deltas?
+
+3. **Change Tracking:**
+   - What information do you need to track per change?
+   - Timestamp, user, file path, change type
+   - How will you structure the change log?
+   - Should it be in-memory, on-disk, or both?
+
+4. **Retrieval:**
+   - How will you quickly find all states of a file?
+   - What structure allows efficient "get state N of file.txt"?
+   - How do you handle chains (s1 → s2 → s3)?
+
+#### Design Consideration for Phase 1
+Smart students will design their Phase 1 system with Phase 2 in mind:
+- The OMNIHeader already has reserved space for state control metadata
+- Design your file storage to accommodate delta storage later
+- Think about how your indexing structures might need to expand
+- Consider how history affects your free space management
+
+You don't need to implement this now, but thinking about it will make your Phase 1 design more flexible and extensible.
+
+**Example forward-thinking:**
+```
+"In my file metadata structure, I included a linked list pointer that's 
+currently NULL but will point to file history in Phase 2. My block 
+allocation strategy reserves 20% of space for future delta storage by 
+marking those blocks as 'reserved' in my free space bitmap."
+```
+
+### Submission Structure
+Submit a ZIP file named `<figure_out>.zip` with this structure (hint: use PHASE-1):
 
 ```
 studentid_phase1.zip/
-├── source_code/
-│   ├── server/
-│   ├── core/
-│   ├── data_structures/
+├── source/
+│   ├── server/              # Your socket server code
+│   ├── core/                 # File system implementation
+│   ├── data_structures/     # Your data structure implementations
 │   ├── include/
-│   │   └── OFS_types.h
-│   └── ui/
+│   │   └── ofs_types.h      # MUST include standard types header
+│   └── ui/                  # Your UI source code
 ├── compiled/
-│   ├── sample.omni
-│   └── default.uconf
+│   ├── sample.omni          # Sample .omni file
+│   ├── default.uconf        # Configuration file
 ├── documentation/
 │   ├── design_choices.md
-│   ├── dastaweiz_io_strategy.md
+│   ├── file_io_strategy.md
 │   ├── user_guide.md
 │   └── testing_report.md
-└── README.md
+└── README.md                # Quick start guide
 ```
 
-## Step-by-Step Plan
-1. **Design Data Structures First**
-    - User storage, lookup, and iteration strategies
-    - sandook representation, path traversal, listing
-    - Free space tracking, allocation, fragmentation handling
-    - Path-to-disk mapping with O(1) or O(log n) lookup
+### Step 1: Design Your Data Structures FIRST
+Before writing any code, answer these questions on paper:
 
-    Sketch structures, discuss with peers, and plan deeply before coding.
+**User Management:**
+- What structure will hold users in memory?
+- How will you lookup users by username?
+- How will you iterate all users?
 
-2. **Implement Core dastaweiz Operations**
-    - Create a new `.omni` dastaweiz
-    - Write, read, and update data
+**File System Tree:**
+- How will you represent directories and files?
+- How will you traverse paths like /a/b/c/file.txt?
+- How will you list all files in a directory?
 
-3. **Build the Socket Server**
-    - Accept connections
-    - Receive and parse JSON messages
-    - Invoke core logic
+**Free Space Tracking:**
+- How will you know which blocks are free?
+- How will you allocate N consecutive blocks?
+- How will you handle fragmentation?
 
-4. **Implement the FIFO Queue**
-    - Queue incoming requests
-    - Process operations sequentially
-    - Send responses back
+**File Location Mapping:**
+- How will you map file paths to physical locations in .omni?
+- What enables O(1) or O(log n) lookup?
 
-5. **Create Your UI**
-    - Connect to the server
-    - Send formatted requests
-    - Display responses
-    - Deliver a strong user experience
+Sketch your structures on paper, discuss with peers, think deeply before coding.
 
-## Important Notes
-- Implement all data structures yourself—no third-party dastaweiz systems or databases
-- Store everything in a single `.omni` binary dastaweiz
-- Enforce FIFO processing so operations never overlap
-- Document and justify every structural decision
-- Keep Phase 2 requirements in mind
-- Test thoroughly, including concurrent clients
-- Provide an interactive UI (not just simple terminal commands)
+### Step 2: Implement Core File Operations
+Start with basic operations:
+- Create a new .omni file
+- Write data to the file
+- Read data from the file
+- Update existing data
 
-## Tips for Success
-- Design before coding to avoid rework
-- Justify each choice (“I used X because Y”)
-- Test incrementally throughout development
-- Balance memory usage against performance
-- Architect with Phase 2 extensibility in mind
-- Anticipate error handling
-- Ask clarifying questions whenever requirements seem unclear
+### Step 3: Build the Socket Server
+Create a server that:
+- Accepts connections
+- Receives JSON messages
+- Parses requests
+- Calls your core functions
 
-The data structures you choose determine system performance and elegance. While no single approach is “correct,” you must:
+### Step 4: Implement FIFO Queue
+Add queuing logic:
+- Queue incoming requests
+- Process one at a time
+- Send responses back
+
+### Step 5: Create Your UI
+Build an interface that:
+- Connects to your server
+- Sends formatted requests
+- Displays responses
+- Provides good user experience
+
+### Important Notes
+- All data structures must be implemented by you - No using built-in file systems or databases
+- Single .omni file - Everything must be in one binary file
+- FIFO processing - Operations execute sequentially, one at a time
+- Document your structure choices - Explain WHY you chose each structure
+- Think about Phase 2 - Design with state control in mind
+- Test thoroughly - Try multiple concurrent clients
+- UI is mandatory - Cannot be just terminal commands
+
+### Tips for Success
+- Design before coding - Spend serious time thinking about structures
+- Justify your choices - "I used X because Y" is what we want to see
+- Test incrementally - Don't wait until everything is done to test
+- Think about trade-offs - Memory vs. speed, simplicity vs. efficiency
+- Consider Phase 2 - Design for extensibility
+- Handle errors - Think about what can go wrong
+- Ask questions - If requirements are unclear, ask for clarification
+
+The data structure choices you make will determine your system's performance and elegance.
+
+**Remember:** There's no single "correct" structure for each problem. What matters is that you:
 - Understand the trade-offs
 - Make informed decisions
 - Document your reasoning
-- Implement everything correctly
-```
-         └──────────┬──────────┘
-                    │
-         ┌──────────┴──────────┐
-         │  FIFO Queue System  │
-         │  (Sequential)       │
-         └──────────┬──────────┘
-                    │
-         ┌──────────┴──────────┐
-         │  Your Core Logic    │
-         │  (dastaweiz Operations)  │
-         └──────────┬──────────┘
-                    │
-         ┌──────────┴──────────┐
-         │   student_id.omni   │
-         │    (Binary dastaweiz)    │
-         └─────────────────────┘
-```
-
-
+- Implement it correctly
