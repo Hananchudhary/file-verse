@@ -3,7 +3,8 @@
 
 #include <cstdint>
 #include <string>
-#include <cstring>  // For std::strncpy and std::memset
+#include <cstring> 
+#include<ctime> // For std::strncpy and std::memset
 
 // ============================================================================
 // ENUMERATIONS - DO NOT MODIFY THESE VALUES
@@ -106,6 +107,8 @@ struct OMNIHeader {
         std::memset(config_hash, 0, sizeof(config_hash));
         std::memset(reserved, 0, sizeof(reserved));
     }
+    
+    
 };  // Total: 512 bytes
 
 /**
@@ -170,6 +173,7 @@ struct FileEntry {
     
     // Setter for type as enum
     void setType(EntryType entry_type) { type = static_cast<uint8_t>(entry_type); }
+    
 };  // Total: 416 bytes
 
 /**

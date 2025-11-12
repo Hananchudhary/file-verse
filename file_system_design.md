@@ -81,7 +81,7 @@ To fulfill the encryption requirement, you must implement a simple Byte Substitu
 - **Mapping:** Design a custom 256-byte array or map that defines a one-to-one replacement: original_byte $\rightarrow$ encoded_byte.
 - **Rule:** All file content read from or written to the Content Block Area must be passed through this encoding/decoding process. The mapping itself must be stored within the .omni file (e.g., in the reserved header space).
 
-### Key-Based System Visibility
+### Key-Based System Visibilitys
 The backend must store a Private Key (e.g., 64 bytes) within the .omni file.
 
 - **Check:** Every frontend request must pass a matching key as a parameter.
