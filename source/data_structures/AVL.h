@@ -20,7 +20,7 @@ template<typename T>
 class AVLTree {
 private:
     AVLNode<T>* root;
-    
+    int _size;
     int getHeight(AVLNode<T>* node) {
         return node ? node->height : 0;
     }
@@ -62,7 +62,10 @@ private:
     }
     
     AVLNode<T>* insertNode(AVLNode<T>* node, const std::string& key, const T& value) {
-        if (!node) return new AVLNode<T>(key, value);
+        if (!node){ 
+            return new AVLNode<T>(key, value);
+            _size++;
+        }
         
         if (key < node->key) {
             node->left = insertNode(node->left, key, value);
@@ -183,11 +186,13 @@ private:
     
 public:
     AVLTree() : root(nullptr) {}
-    
+    int size(){return this->_size;}
     ~AVLTree() {
         destroyTree(root);
     }
-    
+    AVLNode<T>* search(const std::string& key) {
+        return searchNode(root, key);
+    }
     void insert(const std::string& key, const T& value) {
         root = insertNode(root, key, value);
     }

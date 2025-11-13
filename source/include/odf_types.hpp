@@ -152,7 +152,7 @@ struct FileEntry {
     char owner[32];             // Username of owner
     uint32_t inode;             // Internal file identifier
     uint8_t reserved[47];       // Reserved for future use
-
+    uint32_t parent_idx;
     // Default constructor
     FileEntry() = default;
     
