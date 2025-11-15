@@ -100,6 +100,7 @@ private:
     AVLTree<FileMetadata> Mds;
     vector<uint32_t> free_segments;
     uint32_t next_inode_number;
+    vector<uint32_t> deleted;
     uint32_t root_idx;
     uint64_t data_region_start;  // Where data blocks begin
     
@@ -122,9 +123,11 @@ private:
 
         const FileEntry& entry = files[node_idx];
         // Construct path
-        std::string full_path = crnt_path; 
+        std::string full_path = crnt_path;
+        if(std::string(entry.name) != "/") full_path += entry.name; 
         // Create metadata and insert into AVL tree
         FileMetadata meta(full_path, entry);
+        file.open(omni_path, std::ios::binary | std::ios::in);
         if (entry.getType() == EntryType::FILE) {
             uint64_t blocks = 0;
             uint64_t actual_bytes = 0;
@@ -136,7 +139,7 @@ private:
                 BlockHdr bh;
                 file.seekg(static_cast<std::streamoff>(block_offset), std::ios::beg);
                 file.read(reinterpret_cast<char*>(&bh), sizeof(bh));
-                if (!file) break; // stop on error
+                
 
                 blocks++;
                 actual_bytes += bh.size;
@@ -148,6 +151,7 @@ private:
             meta.actual_size = actual_bytes;
             Mds.insert(full_path, meta);
         }
+        file.close();
         // Recursively process children
         if (node_idx < Root.size()) {
             for (auto child_idx : Root[node_idx].childs) {
@@ -248,7 +252,7 @@ public:
             }
             FileEntry emptyEntry;
             std::memset(&emptyEntry, 0, sizeof(emptyEntry));
-            emptyEntry.type = 2;
+            emptyEntry.type = 3;
             for (; written_files < config.max_files; ++written_files) {
                 file.write(reinterpret_cast<const char*>(&emptyEntry), sizeof(FileEntry));
                 if (!file) {
@@ -301,17 +305,18 @@ public:
                 file.close();
                 return static_cast<int>(OFSErrorCodes::ERROR_IO_ERROR);
             }
-            if(entry.type != 2){
+            if(entry.type != 3){
                 Tree temp;
                 if(string(entry.name) == string("/")) temp.prnt = root_idx;
                 else temp.prnt = allocateInode();
                 Root.push_back(temp);
                 if (entry.parent_idx != 0xFFFFFFFF && entry.parent_idx < config.max_files) {
-                    Tree* prnt = find_entry(entry.parent_idx);
-                    Root[prnt->prnt].childs.push_back(temp.prnt);
+                    Root[entry.parent_idx].childs.push_back(temp.prnt);
                 }
                 files.push_back(entry);
-                
+            }
+            else if(entry.type == 2){
+                deleted.push_back(files.size() - 1);
             }
             else
                 break;
@@ -398,7 +403,7 @@ public:
         // Write remaining FileEntry slots as empty
         FileEntry emptyFileEntry;
         std::memset(&emptyFileEntry, 0, sizeof(emptyFileEntry));
-        emptyFileEntry.type = 2;
+        emptyFileEntry.type = 3;
         for (uint32_t i = 1; i < config.max_files; ++i) {
             file.write(reinterpret_cast<const char*>(&emptyFileEntry), sizeof(emptyFileEntry));
             if (!file) { file.close(); return static_cast<int>(OFSErrorCodes::ERROR_IO_ERROR); }
@@ -466,7 +471,7 @@ public:
         return static_cast<int>(OFSErrorCodes::SUCCESS);
     }
     
-    int createFile(void* session, const std::string& path, const char* data, size_t size) {
+    int createFile(void* session, const std::string& path, const char* data, uint64_t size) {
         if (!session) return static_cast<int>(OFSErrorCodes::ERROR_INVALID_SESSION);
 
         if (path.empty() || path[0] != '/') {
@@ -489,14 +494,14 @@ public:
 
         parent_path = (last_slash == 0) ? std::string("/") : path.substr(0, last_slash);
         filename = path.substr(last_slash + 1);
-        if (filename.empty() || path.size() > 512 || (path.size() - last_slash) > config.max_filename_length) return static_cast<int>(OFSErrorCodes::ERROR_INVALID_PATH);
+        if (filename.empty() || path.size() > 512 || filename.size() > config.max_filename_length) return static_cast<int>(OFSErrorCodes::ERROR_INVALID_PATH);
 
         uint32_t parent_idx = findFileIndexByPath(parent_path);
         if (parent_idx == UINT32_MAX) {
             return static_cast<int>(OFSErrorCodes::ERROR_INVALID_PATH);
         }
         // ensure parent is a directory
-        if (parent_idx < 0 || files[parent_idx].type != static_cast<uint8_t>(EntryType::DIRECTORY)) {
+        if (files[parent_idx].type == 2 || parent_idx < 0 || files[parent_idx].type != static_cast<uint8_t>(EntryType::DIRECTORY)) {
             return static_cast<int>(OFSErrorCodes::ERROR_INVALID_PATH);
         }
 
@@ -537,7 +542,7 @@ public:
             }
         }
 
-        size_t remaining = size;
+        uint64_t remaining = size;
         size_t offset_in_data = 0;
         for (size_t i = 0; i < allocated_blocks.size(); ++i) {
             uint32_t blk_idx = allocated_blocks[i];
@@ -565,17 +570,19 @@ public:
         }
 
         // --- 6) Persist the new FileEntry into files vector and tree structures ---
-        uint32_t new_file_index = allocateInode();
-        files.push_back(newEntry);
-
-        // ensure Root vector capacity
-        if (Root.size() <= new_file_index) Root.resize(new_file_index + 1);
-        Root[new_file_index].prnt = parent_idx;
-        Root[parent_idx].childs.push_back(new_file_index);
-
-        // update next_inode_number if you also use it elsewhere as unique id
-        if (newEntry.inode >= next_inode_number) next_inode_number = newEntry.inode + 1;
-
+        if(deleted.size() != 0){
+            int idx = (deleted.size() - 1);
+            deleted.pop_back();
+            memcpy(&files[idx], &newEntry, sizeof(FileEntry));
+        }
+        else{
+            files.push_back(newEntry);
+            Tree temp;
+            temp.prnt = files.size() - 1;
+            Root.push_back(temp);
+            Root[parent_idx].childs.push_back(temp.prnt);
+        }
+        
         // --- 7) Create FileMetadata and insert to Mds ---
         FileMetadata meta(path, newEntry);
         meta.blocks_used = allocated_blocks.size();
@@ -606,7 +613,7 @@ public:
             return static_cast<int>(OFSErrorCodes::ERROR_NOT_FOUND);
 
         FileEntry& entry = files[file_idx];
-        if (entry.type != static_cast<uint8_t>(EntryType::FILE))
+        if (entry.type == 2 || entry.type != static_cast<uint8_t>(EntryType::FILE))
             return static_cast<int>(OFSErrorCodes::ERROR_INVALID_OPERATION);
 
         // ---- 2. Prepare to read data ----
@@ -629,7 +636,7 @@ public:
         }
 
         // ---- 3. Read block chain ----
-        while (current_block != 0 && remaining > 0) {
+        while (current_block != 0) {
             BlockHdr bh;
 
             // Read Block Header
@@ -649,26 +656,26 @@ public:
                 return static_cast<int>(OFSErrorCodes::ERROR_IO_ERROR);
             }
 
-            size_t to_read = std::min(static_cast<size_t>(bh.size), remaining);
-            file.read((*buffer) + total_read, static_cast<std::streamsize>(to_read));
+            file.read((*buffer) + total_read, static_cast<std::streamsize>(bh.size));
             if (!file) {
                 delete[] *buffer;
                 *buffer = nullptr;
                 return static_cast<int>(OFSErrorCodes::ERROR_IO_ERROR);
             }
 
-            total_read += to_read;
-            remaining -= to_read;
+            total_read += bh.size;
+            remaining -= bh.size;
             current_block = bh.nxt;
         }
 
         // ---- 4. Null-terminate and finalize ----
-        (*buffer)[*size] = '\0';
+        (*buffer)[*size ] = '\0';
 
         // ---- 5. Update session ----
         sess->last_activity = static_cast<uint64_t>(std::time(nullptr));
         sess->operations_count++;
-        file.close();
+        if(file.is_open())
+            file.close();
         return static_cast<int>(OFSErrorCodes::SUCCESS);
     }
     
@@ -684,25 +691,24 @@ public:
 
         // --- 2. Get the FileEntry associated with this path ---
         FileEntry entry = meta.entry;
-        if (entry.getType() == EntryType::DIRECTORY) {
+        if (entry.getType() == EntryType::DIRECTORY || entry.type == 2) {
             return static_cast<int>(OFSErrorCodes::ERROR_INVALID_OPERATION); // not allowed to delete directory here
         }
 
         uint32_t file_idx = findFileIndexByPath(path);
-
+        size_t pos = path.find_last_of('/');
+        string parent_path = path.substr(0, pos);
+        uint32_t parent_idx = findFileIndexByPath(parent_path);
         // --- 3. Remove metadata entry from AVL Tree (Mds) ---
         Mds.remove(path);
-
-        // --- 4. Remove from vector<FileEntry> files ---
-        if (file_idx < files.size()) {
-            uint32_t prnt_idx = files[file_idx].parent_idx;
-            for(int i=0;i< Root[prnt_idx].childs.size();i++){
-                if(Root[prnt_idx].childs[i] == file_idx){
-                    Root[prnt_idx].childs.erase(Root[prnt_idx].childs.begin() + i);
-                    break;
-                }
+        files[file_idx].type = 2;
+        deleted.push_back(file_idx);
+        int size = Root[parent_idx].childs.size();
+        for(int i=0;i<size;i++){
+            if(Root[parent_idx].childs[i] == file_idx) {
+                Root[parent_idx].childs.erase(Root[parent_idx].childs.begin() + i);
+                break;
             }
-            files.erase(files.begin() + file_idx);  // mark invalid
         }
         // --- 6. Free the data blocks ---
          if (!file.is_open()) {
@@ -727,7 +733,7 @@ public:
             bh.size =0;
 
             // Write back updated BlockHdr
-            file.seekp(static_cast<std::streamoff>(current_block), std::ios::beg);
+            file.seekp(static_cast<std::streamoff>(current_block));
             file.write(reinterpret_cast<const char*>(&bh), sizeof(bh));
 
             // Add block back to free_segments
@@ -769,7 +775,7 @@ public:
             bool found = false;
             for (uint32_t child_idx : Root[current_idx].childs) {
                 if (files[child_idx].getType() == EntryType::DIRECTORY &&
-                    std::string(files[child_idx].name) == tok) {
+                    std::string(files[child_idx].name) == tok && files[child_idx].type != 2) {
                     current_idx = child_idx;
                     found = true;
                     break;
@@ -782,7 +788,7 @@ public:
         // 4️⃣ Check if directory already exists in parent
         for (uint32_t child_idx : Root[current_idx].childs) {
             if (std::string(files[child_idx].name) == dir_name &&
-                files[child_idx].getType() == EntryType::DIRECTORY) {
+                files[child_idx].getType() == EntryType::DIRECTORY && files[child_idx].type == 2) {
                 return static_cast<int>(OFSErrorCodes::ERROR_FILE_EXISTS);
             }
         } 
@@ -792,20 +798,24 @@ public:
                          static_cast<uint32_t>(FilePermissions::OWNER_READ) |
                          static_cast<uint32_t>(FilePermissions::OWNER_WRITE) |
                          static_cast<uint32_t>(FilePermissions::OWNER_EXECUTE),
-                         s->user.username, next_inode_number++);
+                         s->user.username, 0);
         newDir.created_time = std::time(nullptr);
         newDir.modified_time = newDir.created_time;
         newDir.parent_idx = current_idx;
 
         // 6️⃣ Add to files and tree
-        uint32_t newIdx = files.size();
-        files.push_back(newDir);
-
-        Tree tnode;
-        tnode.prnt = current_idx;
-        Root.push_back(tnode);
-
-        Root[current_idx].childs.push_back(newIdx);
+        if(deleted.size() != 0){
+            int idx = (deleted.size() - 1);
+            deleted.pop_back();
+            memcpy(&files[idx], &newDir, sizeof(FileEntry));
+        }
+        else{
+            files.push_back(newDir);
+            Tree temp;
+            temp.prnt = files.size() - 1;
+            Root.push_back(temp);
+            Root[current_idx].childs.push_back(temp.prnt);
+        }
         s->last_activity = time(nullptr);
         s->operations_count++;
         // 7️⃣ Return success
@@ -836,7 +846,8 @@ public:
             bool found = false;
             for (uint32_t child_idx : Root[current_idx].childs) {
                 if (std::string(files[child_idx].name) == tok &&
-                    files[child_idx].getType() == EntryType::DIRECTORY) {
+                    files[child_idx].getType() == EntryType::DIRECTORY &&
+                    files[child_idx].type != 2) {
                     current_idx = child_idx;
                     found = true;
                     break;
@@ -854,7 +865,8 @@ public:
         if (n > 0) {
             *entries = new FileEntry[n];
             for (int i = 0; i < n; ++i) {
-                (*entries)[i] = files[child_indices[i]];
+                if(files[child_indices[i]].type != 2)
+                    (*entries)[i] = files[child_indices[i]];
             }
         } 
         else {
@@ -878,50 +890,25 @@ public:
             return static_cast<int>(OFSErrorCodes::ERROR_INVALID_PATH);
 
         // 3️⃣ Split path into tokens (assuming helper function)
-        std::vector<std::string> tokens = splitPathTokens(path);
-        if (tokens.empty()) 
-            return static_cast<int>(OFSErrorCodes::ERROR_INVALID_PATH);
+        uint32_t file_idx = findFileIndexByPath(path);
+        size_t pos = path.find_last_of('/');
+        string parent_path = path.substr(0, pos);
+        uint32_t parent_idx = findFileIndexByPath(parent_path);
+        int size = Root[file_idx].childs.size();
+        for(int i = 0;i<size;i++){
+            if(files[Root[file_idx].childs[i]].type != 2)
+                return static_cast<int>(OFSErrorCodes::ERROR_DIRECTORY_NOT_EMPTY);
 
-        // 4️⃣ Traverse to find the directory node
-        uint32_t current_idx = root_idx;
-        bool found = true;
-        string parent = tokens[tokens.size() - 2];
-        for (size_t i = 0; i < tokens.size(); ++i) {
-            found = false;
-            for (uint32_t child : Root[current_idx].childs) {
-                if (std::string(files[child].name) == tokens[i]) {
-                    if (i == tokens.size() - 1) {
-                        current_idx = child;
-                        found = true;
-                        break;
-                    }
-                    if (files[child].getType() == EntryType::DIRECTORY) {
-                        current_idx = child;
-                        found = true;
-                        break;
-                    }
-                }
-            }
-            if (!found)
-                return static_cast<int>(OFSErrorCodes::ERROR_NOT_FOUND);
         }
-
-        if (files[current_idx].getType() != EntryType::DIRECTORY)
-            return static_cast<int>(OFSErrorCodes::ERROR_INVALID_OPERATION);
-
-        // 6️⃣ Check if directory is empty
-        if (!Root[current_idx].childs.empty())
-            return static_cast<int>(OFSErrorCodes::ERROR_DIRECTORY_NOT_EMPTY);
-
-        // 7️⃣ Remove directory from its parent's child list
-        uint32_t parent_idx = Root[current_idx].prnt;
-        int size = Root[parent_idx].childs.size();
+        files[file_idx].type = 2;
+        deleted.push_back(file_idx);
+        size = Root[parent_idx].childs.size();
         for(int i=0;i<size;i++){
-            if(Root[parent_idx].childs[i] == current_idx){
+            if(Root[parent_idx].childs[i] == file_idx) {
                 Root[parent_idx].childs.erase(Root[parent_idx].childs.begin() + i);
+                break;
             }
         }
-        files.erase(files.begin() + current_idx);
         // 9️⃣ Update session info (activity timestamp)
         SessionInfo* s = static_cast<SessionInfo*>(session);
         s->last_activity = std::time(nullptr);
@@ -936,7 +923,8 @@ public:
         SessionInfo* s = reinterpret_cast<SessionInfo*>(session);
         s->last_activity = std::time(nullptr);
         s->operations_count++;
-        if(Mds.exists(path))
+        FileMetadata meta;
+        if(Mds.find(path, meta))
             return static_cast<int>(OFSErrorCodes::SUCCESS);
         
         return static_cast<int>(OFSErrorCodes::ERROR_NOT_FOUND);
@@ -962,7 +950,8 @@ public:
             found = false;
             for (uint32_t child : Root[current_idx].childs) {
                 if (std::string(files[child].name) == tokens[i] &&
-                    files[child].getType() == EntryType::DIRECTORY) {
+                    files[child].getType() == EntryType::DIRECTORY &&
+                    files[child].type != 2) {
                     current_idx = child;
                     found = true;
                     break;
@@ -989,7 +978,7 @@ public:
         return static_cast<int>(OFSErrorCodes::SUCCESS);
     }
     
-    int getStats(void* session, FSStats* stats) {
+    int getStats(void* session, FSStats*& stats) {
         if (!session) return static_cast<int>(OFSErrorCodes::ERROR_INVALID_SESSION);
         stats = new FSStats();
         stats->total_size = header.total_size;
@@ -998,9 +987,11 @@ public:
     
         // Count files, directories, and used space
         for (auto &f : files) {
-            stats->used_space += f.size;
-            if (f.getType() == EntryType::FILE) stats->total_files++;
-            else if (f.getType() == EntryType::DIRECTORY) stats->total_directories++;
+            if(f.type!=2){
+                stats->used_space += f.size;
+                if (f.getType() == EntryType::FILE) stats->total_files++;
+                else if (f.getType() == EntryType::DIRECTORY) stats->total_directories++;
+            }
         }
     
         // Free space = total size - used space (or sum of free segments * block_size)
@@ -1019,7 +1010,7 @@ public:
             }
         }
         stats->fragmentation = total_free_blocks > 0 ? 100.0 * (contiguous_free - 1) / total_free_blocks : 0.0;
-    
+        stats->free_space=stats->free_space-(sizeof(OMNIHeader) + (config.max_users*sizeof(UserInfo)) + (config.max_files*sizeof(FileEntry)));
         return static_cast<int>(OFSErrorCodes::SUCCESS);
     }
 
@@ -1062,7 +1053,13 @@ public:
 
         // 7️⃣ Update modified time
         target_file->modified_time = std::time(nullptr);
+        memcpy(&node->value.entry, target_file, sizeof(FileEntry));
+        Mds.remove(old_path);
+        Mds.insert(new_path, node->value);
+        uint32_t file_idx = findFileIndexByPath(old_path);
+        std::strncpy(files[file_idx].name, new_tokens.back().c_str(), sizeof(files[file_idx].name) - 1);
 
+        
         return static_cast<int>(OFSErrorCodes::SUCCESS);
     }
 
@@ -1075,39 +1072,14 @@ public:
         if (!node)
             return static_cast<int>(OFSErrorCodes::ERROR_INVALID_PATH);
         FileEntry* fileEntry = &node->value.entry;
-
         // 2. Calculate blocks required
         uint32_t block_size = header.block_size;
         uint32_t total_size_needed = index + size;
         uint32_t blocks_needed = (total_size_needed + block_size) / block_size;
-        blocks_needed--;
-        if(free_segments.size() < node->value.blocks_used - blocks_needed)
+        if(free_segments.size() < blocks_needed)
             return static_cast<int>(OFSErrorCodes::ERROR_NO_SPACE);
         
-         if (!file.is_open()) {
-            file.open(omni_path, std::ios::in | std::ios::binary | std::ios::out);
-            if (!file.is_open()) {
-                return static_cast<int>(OFSErrorCodes::ERROR_IO_ERROR);
-            }
-        }
-        std::vector<uint32_t> file_blocks;
-        uint32_t current_inode = fileEntry->inode;
-        uint32_t write_index =  0;
-        int i =0;
-        while (true) {
-            file_blocks.push_back(current_inode);
-            file.seekg(current_inode);
-            BlockHdr bh;
-            file.read(reinterpret_cast<char*>(&bh), sizeof(bh));
-            if(bh.nxt != 0){
-                current_inode = bh.nxt;
-            }
-            else break;
-        }
-        i = index/block_size;
-        write_index = file_blocks[i++] + index%block_size + sizeof(BlockHdr);
-        file.close();
-         if (!file.is_open()) {
+        if (!file.is_open()) {
             file.open(omni_path, std::ios::in | std::ios::binary | std::ios::out);
             if (!file.is_open()) {
                 return static_cast<int>(OFSErrorCodes::ERROR_IO_ERROR);
@@ -1115,30 +1087,66 @@ public:
         }
         uint32_t remaining = size;
         uint32_t written = 0;
-
-        while (written < size) {
-            uint32_t write_size = std::min((block_size - (write_index % block_size)), remaining);
-
-            file.seekp(write_index);
-            file.write(data, write_size);
-
-            remaining -= write_size;
-            written += write_size;
-            if (remaining == 0) break;
-
-            if(i<file_blocks.size()) write_index = file_blocks[i++];
-            else {
-                BlockHdr bh;
+        uint32_t write_index = index%block_size;
+        uint32_t current_inode = fileEntry->inode;
+        uint32_t block_index = index / block_size;
+        if(index > fileEntry->size){
+            return static_cast<int>(OFSErrorCodes::ERROR_IO_ERROR);
+        }
+        int i = 0;
+        while (true) {
+            BlockHdr bh;
+            file.seekg(current_inode);
+            file.read(reinterpret_cast<char*>(&bh), sizeof(bh));
+            if(written > remaining){
+                bh.isValid = true;
+                bh.nxt = 0;
+                bh.size = 0;
+                file.seekp(current_inode);
+                file.write(reinterpret_cast<const char*>(&bh), sizeof(BlockHdr));
+                free_segments.push_back(current_inode);
+            }
+            else if(i >= block_index){
                 bh.size = min(block_size, remaining);
                 bh.isValid = false;
-                free_segments.erase(free_segments.begin());
-                write_index = free_segments[0]; 
+                uint32_t write_size = min(block_size,  remaining);
+                file.seekp(current_inode);
+                if(i == block_index){
+                    write_size = ((index%block_size) + remaining) <= block_size ? (remaining) : (block_size - (index%block_size));
+                    bh.size = min((index%block_size) + remaining, block_size);
+                }
+                if(written + write_size <= remaining - write_size){
+                    bh.nxt = free_segments[0];
+                    free_segments.erase(free_segments.begin());
+                }
+                file.write(reinterpret_cast<const char*>(&bh), sizeof(BlockHdr));
+                if(i==block_index) 
+                    file.seekp(index%block_size, std::ios::cur);
+                file.write(data + written, write_size);
+                written += write_size;
+                remaining -= write_size;
+                if(written > remaining){
+                    BlockHdr bhh;
+                    file.seekg(current_inode);
+                    file.read(reinterpret_cast<char*>(&bhh), sizeof(BlockHdr));
+                    bhh.nxt = 0;
+                    file.seekp(current_inode);
+                    file.write(reinterpret_cast<char*>(&bhh), sizeof(BlockHdr));
+                }
             }
+            if(bh.nxt != 0){
+                current_inode = bh.nxt;
+            }
+            else break;
+            i++;
         }
+
         file.close();
         // 6. Update file entry metadata
-        fileEntry->size = std::max(fileEntry->size, static_cast<uint64_t>(index + size));
-
+        fileEntry->size = (index%block_size) + size;
+        uint32_t file_idx = findFileIndexByPath(path);
+        files[file_idx].size = fileEntry->size;
+        node->value.blocks_used = blocks_needed;
         // 7. Update session info (cast session to your session struct)
         ((SessionInfo*)session)->operations_count++;
         ((SessionInfo*)session)->last_activity = std::time(nullptr);
@@ -1181,7 +1189,7 @@ public:
         // 3. Overwrite each block with 'sir umer'
         const std::string fill_str = "sir umer";
         for (auto block_idx : file_blocks) {
-            file.seekp(block_idx, std::ios::beg);
+            file.seekp(block_idx + sizeof(BlockHdr));
             for (uint32_t offset = 0; offset < block_size; offset += fill_str.size()) {
                 uint32_t write_size = std::min(static_cast<uint32_t>(fill_str.size()), block_size - offset);
                 file.write(fill_str.c_str(), write_size);
@@ -1198,14 +1206,16 @@ public:
     
     int setPermissions(void* session, const std::string& path, uint32_t permissions) {
         if (!session) return static_cast<int>(OFSErrorCodes::ERROR_INVALID_SESSION);
-        
+        auto s = reinterpret_cast<SessionInfo*>(session);
+        s->operations_count++;
+        s->last_activity = std::time(nullptr);
         uint32_t inode_num = findFileIndexByPath(path);
         if (inode_num < 0) {
             return static_cast<int>(OFSErrorCodes::ERROR_INVALID_PATH);
         }
         files[inode_num].permissions = permissions;
         
-        return static_cast<int>(OFSErrorCodes::ERROR_NOT_FOUND);
+        return static_cast<int>(OFSErrorCodes::SUCCESS);
     }
     
     int createUser(void* session, const std::string& username, const std::string& password, UserRole role) {
@@ -1398,7 +1408,7 @@ int set_permissions(void* instance, void* session, const char* path, uint32_t pe
     return static_cast<OFSInstance*>(instance)->setPermissions(session, path, permissions);
 }
 
-int get_stats(void* instance, void* session, FSStats* stats) {
+int get_stats(void* instance, void* session, FSStats*& stats) {
     if (!instance) return static_cast<int>(OFSErrorCodes::ERROR_INVALID_SESSION);
     return static_cast<OFSInstance*>(instance)->getStats(session, stats);
 }

@@ -161,7 +161,8 @@ public:
                 int result = file_create(instance, session, path.c_str(), content.c_str(), content.length());
                 printResult(result, "Create file " + path);
 
-            } else if (choice == "2") {
+            } 
+            else if (choice == "2") {
                 // Read File
                 string path = getInput("Enter file path to read: ");
                 char* buffer = nullptr;
@@ -389,25 +390,26 @@ public:
     }
 
     void showSystemInformation() {
-        FSStats stats;
-        int result = get_stats(instance, session, &stats);
+        FSStats* stats = nullptr;
+        int result = get_stats(instance, session, stats);
         printResult(result, "Get system statistics");
         if (result == static_cast<int>(OFSErrorCodes::SUCCESS)) {
             cout << "\n=== FILE SYSTEM STATISTICS ===" << endl;
-            cout << "Total Size: " << stats.total_size << " bytes" << endl;
-            cout << "Used Space: " << stats.used_space << " bytes" << endl;
-            cout << "Free Space: " << stats.free_space << " bytes" << endl;
-            cout << "Total Files: " << stats.total_files << endl;
-            cout << "Total Directories: " << stats.total_directories << endl;
-            cout << "Total Users: " << stats.total_users << endl;
-            cout << "Active Sessions: " << stats.active_sessions << endl;
+            cout << "Total Size: " << stats->total_size << " bytes" << endl;
+            cout << "Used Space: " << stats->used_space << " bytes" << endl;
+            cout << "Free Space: " << stats->free_space << " bytes" << endl;
+            cout << "Total Files: " << stats->total_files << endl;
+            cout << "Total Directories: " << stats->total_directories << endl;
+            cout << "Total Users: " << stats->total_users << endl;
+            cout << "Active Sessions: " << stats->active_sessions << endl;
             
             // Calculate usage percentage
-            double usage_percent = (static_cast<double>(stats.used_space) / stats.total_size) * 100;
+            double usage_percent = (static_cast<double>(stats->used_space) / stats->total_size) * 100;
             cout << "Usage: " << usage_percent << "%" << endl;
             
             cout << "=========================================" << endl;
         }
+        delete stats;
     }
 
     void runQuickTest() {
