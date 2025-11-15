@@ -227,13 +227,13 @@ public:
                 printResult(result, "Get metadata for " + path);
                 if (result == static_cast<int>(OFSErrorCodes::SUCCESS)) {
                     cout << "Path: " << meta.path << endl;
-                    cout << "Name: " << meta.entry.name << endl;
-                    cout << "Type: " << (meta.entry.type == 0 ? "FILE" : "DIRECTORY") << endl;
-                    cout << "Size: " << meta.entry.size << " bytes" << endl;
-                    cout << "Permissions: " << meta.entry.permissions << endl;
-                    cout << "Owner: " << meta.entry.owner << endl;
-                    cout << "Created: " << meta.entry.created_time << endl;
-                    cout << "Modified: " << meta.entry.modified_time << endl;
+                    cout << "Name: " << meta.entry->name << endl;
+                    cout << "Type: " << (meta.entry->type == 0 ? "FILE" : "DIRECTORY") << endl;
+                    cout << "Size: " << meta.entry->size << " bytes" << endl;
+                    cout << "Permissions: " << meta.entry->permissions << endl;
+                    cout << "Owner: " << meta.entry->owner << endl;
+                    cout << "Created: " << meta.entry->created_time << endl;
+                    cout << "Modified: " << meta.entry->modified_time << endl;
                     cout << "Blocks used: " << meta.blocks_used << endl;
                 }
 

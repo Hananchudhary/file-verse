@@ -121,12 +121,16 @@ private:
     void traverse(uint32_t node_idx, string crnt_path){
         if (node_idx >= files.size()) return;
 
-        const FileEntry& entry = files[node_idx];
+        FileEntry& entry = files[node_idx];
         // Construct path
         std::string full_path = crnt_path;
-        if(std::string(entry.name) != "/") full_path += entry.name; 
+        if(std::string(entry.name) != "/"){
+            if(crnt_path.size() !=0 && crnt_path[crnt_path.size() - 1] != '/') 
+                full_path+="/";
+            full_path += entry.name;
+        } 
         // Create metadata and insert into AVL tree
-        FileMetadata meta(full_path, entry);
+        FileMetadata meta(full_path, &entry);
         file.open(omni_path, std::ios::binary | std::ios::in);
         if (entry.getType() == EntryType::FILE) {
             uint64_t blocks = 0;
@@ -570,13 +574,16 @@ public:
         }
 
         // --- 6) Persist the new FileEntry into files vector and tree structures ---
+        FileEntry* entry = nullptr;
         if(deleted.size() != 0){
             int idx = (deleted.size() - 1);
             deleted.pop_back();
             memcpy(&files[idx], &newEntry, sizeof(FileEntry));
+            entry = &files[idx];
         }
         else{
             files.push_back(newEntry);
+            entry = &files[files.size() - 1];
             Tree temp;
             temp.prnt = files.size() - 1;
             Root.push_back(temp);
@@ -584,7 +591,7 @@ public:
         }
         
         // --- 7) Create FileMetadata and insert to Mds ---
-        FileMetadata meta(path, newEntry);
+        FileMetadata meta(path, entry);
         meta.blocks_used = allocated_blocks.size();
         meta.actual_size = size;
         // Insert into Mds (assumed method). ADAPT if your AVL API differs.
@@ -690,7 +697,7 @@ public:
         }
 
         // --- 2. Get the FileEntry associated with this path ---
-        FileEntry entry = meta.entry;
+        FileEntry entry = *meta.entry;
         if (entry.getType() == EntryType::DIRECTORY || entry.type == 2) {
             return static_cast<int>(OFSErrorCodes::ERROR_INVALID_OPERATION); // not allowed to delete directory here
         }
@@ -1042,7 +1049,7 @@ public:
         AVLNode<FileMetadata>* node = Mds.search(old_path);
         if (!node)
             return static_cast<int>(OFSErrorCodes::ERROR_NOT_FOUND);
-        FileEntry* target_file = &node->value.entry;
+        FileEntry* target_file = node->value.entry;
 
         if (!target_file)
             return static_cast<int>(OFSErrorCodes::ERROR_NOT_FOUND);
@@ -1053,11 +1060,8 @@ public:
 
         // 7️⃣ Update modified time
         target_file->modified_time = std::time(nullptr);
-        memcpy(&node->value.entry, target_file, sizeof(FileEntry));
         Mds.remove(old_path);
         Mds.insert(new_path, node->value);
-        uint32_t file_idx = findFileIndexByPath(old_path);
-        std::strncpy(files[file_idx].name, new_tokens.back().c_str(), sizeof(files[file_idx].name) - 1);
 
         
         return static_cast<int>(OFSErrorCodes::SUCCESS);
@@ -1071,7 +1075,7 @@ public:
         AVLNode<FileMetadata>* node = Mds.search(path);
         if (!node)
             return static_cast<int>(OFSErrorCodes::ERROR_INVALID_PATH);
-        FileEntry* fileEntry = &node->value.entry;
+        FileEntry* fileEntry = node->value.entry;
         // 2. Calculate blocks required
         uint32_t block_size = header.block_size;
         uint32_t total_size_needed = index + size;
@@ -1162,7 +1166,7 @@ public:
         AVLNode<FileMetadata>* node = Mds.search(path);
         if (!node)
             return static_cast<int>(OFSErrorCodes::ERROR_NOT_FOUND);
-        FileEntry* fileEntry = &node->value.entry;
+        FileEntry* fileEntry = node->value.entry;
 
         uint32_t block_size = header.block_size;
          if (!file.is_open()) {

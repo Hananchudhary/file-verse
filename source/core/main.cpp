@@ -118,8 +118,8 @@ void test_file_operations() {
     FileMetadata meta;
     result = get_metadata(instance, admin_session, "/test.txt", &meta);
     assert(result == static_cast<int>(OFSErrorCodes::SUCCESS));
-    assert(strcmp(meta.entry.name, "test.txt") == 0);
-    assert(meta.entry.size == strlen(test_data));
+    assert(strcmp(meta.entry->name, "test.txt") == 0);
+    assert(meta.entry->size == strlen(test_data));
     cout << "✓ File metadata retrieval successful" << endl;
     
     // Test file edit
@@ -136,7 +136,7 @@ void test_file_operations() {
     cout << "✓ File after edit: " << buffer << endl;
     
     // Test file rename
-    result = file_rename(instance, admin_session, "/test.txt", "/renamed_file.txt");
+    result = file_rename(instance, admin_session, "/test.txt", "/naam.txt");
     assert(result == static_cast<int>(OFSErrorCodes::SUCCESS));
     cout << "✓ File rename successful" << endl;
     
@@ -145,21 +145,21 @@ void test_file_operations() {
     assert(result == static_cast<int>(OFSErrorCodes::ERROR_NOT_FOUND));
     
     // Verify new file exists
-    result = file_exists(instance, admin_session, "/renamed_file.txt");
+    result = file_exists(instance, admin_session, "/naam.txt");
     assert(result == static_cast<int>(OFSErrorCodes::SUCCESS));
     
     // Test file truncate
-    result = file_truncate(instance, admin_session, "/renamed_file.txt");
+    result = file_truncate(instance, admin_session, "/naam.txt");
     assert(result == static_cast<int>(OFSErrorCodes::SUCCESS));
     cout << "✓ File truncate successful" << endl;
     
     // Test file deletion
-    result = file_delete(instance, admin_session, "/renamed_file.txt");
+    result = file_delete(instance, admin_session, "/naam.txt");
     assert(result == static_cast<int>(OFSErrorCodes::SUCCESS));
     cout << "✓ File deletion successful" << endl;
     
     // Verify deletion
-    result = file_exists(instance, admin_session, "/renamed_file.txt");
+    result = file_exists(instance, admin_session, "/naam.txt");
     assert(result == static_cast<int>(OFSErrorCodes::ERROR_NOT_FOUND));
     
     free_buffer(buffer);
@@ -392,7 +392,7 @@ void test_edge_cases() {
     fs_shutdown(instance);
 }
 
-int main1() {
+int main2() {
     cout << "Starting OFS Implementation Test Suite" << endl;
     cout << "======================================" << endl;
     
@@ -416,12 +416,12 @@ int main1() {
     
     return 0;
 }
-int main2(){
+int main(){
     InteractiveTester menu;
     menu.run();
     return 0;
 }
-int main(){
+int main1(){
      cout << "\n=== Testing File Operations ===" << endl;
     
     void* instance = nullptr;
