@@ -205,7 +205,7 @@ struct FileMetadata {
  */
 struct SessionInfo {
     char session_id[64];        // Unique session identifier
-    UserInfo user;              // User information
+    UserInfo* user;              // User information
     uint64_t login_time;        // When session was created
     uint64_t last_activity;     // Last activity timestamp
     uint32_t operations_count;  // Number of operations performed
@@ -215,11 +215,20 @@ struct SessionInfo {
     SessionInfo() = default;
     
     // Constructor
-    SessionInfo(const std::string& id, const UserInfo& user_info, uint64_t login)
+    SessionInfo(const std::string& id, UserInfo* user_info, uint64_t login)
         : user(user_info), login_time(login), last_activity(login), operations_count(0) {
         std::strncpy(session_id, id.c_str(), sizeof(session_id) - 1);
         session_id[sizeof(session_id) - 1] = '\0';
         std::memset(reserved, 0, sizeof(reserved));
+    }
+    SessionInfo(const SessionInfo& other){
+        std::strncpy(session_id, other.session_id, sizeof(session_id));
+        user = new UserInfo();
+        memcpy(user, other.user, sizeof(UserInfo));   // shallow copy OK IF user is persistent
+        login_time = other.login_time;
+        last_activity = other.last_activity;
+        operations_count = other.operations_count;
+        std::memcpy(reserved, other.reserved, sizeof(reserved));
     }
 };
 

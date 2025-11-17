@@ -61,7 +61,7 @@ private:
         return y;
     }
     
-    AVLNode<T>* insertNode(AVLNode<T>* node, const std::string& key, const T& value) {
+    AVLNode<T>* insertNode(AVLNode<T>*& node, const std::string& key, const T& value) {
         if (!node){ 
             return new AVLNode<T>(key, value);
             _size++;

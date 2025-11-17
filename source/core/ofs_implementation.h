@@ -10,7 +10,7 @@
 #include <ctime>
 #include <algorithm>
 #include <sstream>
-
+int session_id = 1;
 using namespace std;
 struct Config {
     uint64_t total_size;
@@ -22,9 +22,6 @@ struct Config {
     std::string admin_username;
     std::string admin_password;
     bool require_auth;
-    uint32_t port;
-    uint32_t max_connections;
-    uint32_t queue_timeout;
 };
 
 class ConfigParser {
@@ -69,9 +66,6 @@ public:
             else if (key == "admin_username") config.admin_username = value;
             else if (key == "admin_password") config.admin_password = value;
             else if (key == "require_auth") config.require_auth = (value == "true");
-            else if (key == "port") config.port = std::stoul(value);
-            else if (key == "max_connections") config.max_connections = std::stoul(value);
-            else if (key == "queue_timeout") config.queue_timeout = std::stoul(value);
         }
         
         return true;
@@ -455,7 +449,7 @@ public:
     
     int userLogin(const std::string& username, const std::string& password, void** session) {
         UserInfo user;
-        if(users.size() +1 > config.max_users){
+        if(users.size() + 1 > config.max_users){
             return static_cast<int>(OFSErrorCodes::ERROR_INVALID_OPERATION);
         }
         if (!users.find(username, user)) {
@@ -469,8 +463,8 @@ public:
         user.last_login = std::time(nullptr);
         users.insert(username, user);
         
-        UserInfo* session_user = new UserInfo(user);
-        *session = session_user;
+        SessionInfo* sess = new SessionInfo(to_string(session_id++), &user, std::time(nullptr));
+        *session = sess;
         
         return static_cast<int>(OFSErrorCodes::SUCCESS);
     }
@@ -510,7 +504,7 @@ public:
         }
 
         // --- 3) Prepare FileEntry ---
-        FileEntry newEntry(filename, EntryType::FILE, size, 0644, string(sess->user.username), 0);
+        FileEntry newEntry(filename, EntryType::FILE, size, 0644, string(sess->user->username), 0);
         uint64_t now = static_cast<uint64_t>(std::time(nullptr));
         newEntry.created_time = now;
         newEntry.modified_time = now;
@@ -611,7 +605,7 @@ public:
 
         SessionInfo* sess = static_cast<SessionInfo*>(session);
 
-        if(Mds.size()!= 0 && Mds.exists(path)){
+        if(Mds.size()!= 0 && !Mds.exists(path)){
             return static_cast<int>(OFSErrorCodes::ERROR_FILE_EXISTS);
         }
 
@@ -622,6 +616,9 @@ public:
         FileEntry& entry = files[file_idx];
         if (entry.type == 2 || entry.type != static_cast<uint8_t>(EntryType::FILE))
             return static_cast<int>(OFSErrorCodes::ERROR_INVALID_OPERATION);
+
+        if(string(entry.owner) != string(sess->user->username))
+            return static_cast<int>(OFSErrorCodes::ERROR_PERMISSION_DENIED);
 
         // ---- 2. Prepare to read data ----
         *size = static_cast<size_t>(entry.size);
@@ -701,6 +698,8 @@ public:
         if (entry.getType() == EntryType::DIRECTORY || entry.type == 2) {
             return static_cast<int>(OFSErrorCodes::ERROR_INVALID_OPERATION); // not allowed to delete directory here
         }
+        if(string(entry.owner) != string(s->user->username))
+            return static_cast<int>(OFSErrorCodes::ERROR_PERMISSION_DENIED);
 
         uint32_t file_idx = findFileIndexByPath(path);
         size_t pos = path.find_last_of('/');
@@ -805,7 +804,7 @@ public:
                          static_cast<uint32_t>(FilePermissions::OWNER_READ) |
                          static_cast<uint32_t>(FilePermissions::OWNER_WRITE) |
                          static_cast<uint32_t>(FilePermissions::OWNER_EXECUTE),
-                         s->user.username, 0);
+                         s->user->username, 0);
         newDir.created_time = std::time(nullptr);
         newDir.modified_time = newDir.created_time;
         newDir.parent_idx = current_idx;
@@ -892,12 +891,18 @@ public:
         if (!session) 
             return static_cast<int>(OFSErrorCodes::ERROR_INVALID_SESSION);
 
+        SessionInfo* s = static_cast<SessionInfo*>(session);
+        s->last_activity = std::time(nullptr);
+        s->operations_count++;
         // 2️⃣ Validate path
         if (path.empty() || path[0] != '/')
             return static_cast<int>(OFSErrorCodes::ERROR_INVALID_PATH);
 
         // 3️⃣ Split path into tokens (assuming helper function)
         uint32_t file_idx = findFileIndexByPath(path);
+        if(string(files[file_idx].owner) != string(s->user->username))
+            return static_cast<int>(OFSErrorCodes::ERROR_PERMISSION_DENIED);
+
         size_t pos = path.find_last_of('/');
         string parent_path = path.substr(0, pos);
         uint32_t parent_idx = findFileIndexByPath(parent_path);
@@ -917,9 +922,7 @@ public:
             }
         }
         // 9️⃣ Update session info (activity timestamp)
-        SessionInfo* s = static_cast<SessionInfo*>(session);
-        s->last_activity = std::time(nullptr);
-        s->operations_count++;
+        
 
         return static_cast<int>(OFSErrorCodes::SUCCESS);
     }
@@ -981,6 +984,8 @@ public:
         AVLNode<FileMetadata>* node = Mds.search(path);
         if(!node)
             return static_cast<int>(OFSErrorCodes::ERROR_INVALID_PATH);
+        if(string(node->value.entry->owner) != string(s->user->username))
+            return static_cast<int>(OFSErrorCodes::ERROR_PERMISSION_DENIED);
         memcpy(meta, &node->value, sizeof(FileMetadata));
         return static_cast<int>(OFSErrorCodes::SUCCESS);
     }
@@ -1050,7 +1055,8 @@ public:
         if (!node)
             return static_cast<int>(OFSErrorCodes::ERROR_NOT_FOUND);
         FileEntry* target_file = node->value.entry;
-
+        if(string(target_file->owner) != string(s->user->username))
+            return static_cast<int>(OFSErrorCodes::ERROR_PERMISSION_DENIED);
         if (!target_file)
             return static_cast<int>(OFSErrorCodes::ERROR_NOT_FOUND);
 
@@ -1070,12 +1076,16 @@ public:
     
     int editFile(void* session, const std::string& path, const char* data, size_t size, uint32_t index) {
         if (!session) return static_cast<int>(OFSErrorCodes::ERROR_INVALID_SESSION);
-
+        SessionInfo* s = static_cast<SessionInfo*>(session); 
+        s->operations_count++;
+        s->last_activity = std::time(nullptr);
         // 1. Find the file entry
         AVLNode<FileMetadata>* node = Mds.search(path);
         if (!node)
             return static_cast<int>(OFSErrorCodes::ERROR_INVALID_PATH);
         FileEntry* fileEntry = node->value.entry;
+        if(string(fileEntry->owner) != string(s->user->username))
+            return static_cast<int>(OFSErrorCodes::ERROR_PERMISSION_DENIED);
         // 2. Calculate blocks required
         uint32_t block_size = header.block_size;
         uint32_t total_size_needed = index + size;
@@ -1152,8 +1162,7 @@ public:
         files[file_idx].size = fileEntry->size;
         node->value.blocks_used = blocks_needed;
         // 7. Update session info (cast session to your session struct)
-        ((SessionInfo*)session)->operations_count++;
-        ((SessionInfo*)session)->last_activity = std::time(nullptr);
+        
 
         return static_cast<int>(OFSErrorCodes::SUCCESS);
     }
@@ -1162,12 +1171,15 @@ public:
     
     int truncateFile(void* session, const std::string& path) {
         if (!session) return static_cast<int>(OFSErrorCodes::ERROR_INVALID_SESSION);
-
+        auto s = reinterpret_cast<SessionInfo*>(session);
+        s->operations_count++;
+        s->last_activity = std::time(nullptr);
         AVLNode<FileMetadata>* node = Mds.search(path);
         if (!node)
             return static_cast<int>(OFSErrorCodes::ERROR_NOT_FOUND);
         FileEntry* fileEntry = node->value.entry;
-
+        if(string(fileEntry->owner) != string(s->user->username))
+            return static_cast<int>(OFSErrorCodes::ERROR_PERMISSION_DENIED);
         uint32_t block_size = header.block_size;
          if (!file.is_open()) {
             file.open(omni_path, std::ios::in | std::ios::binary | std::ios::out);
@@ -1200,9 +1212,7 @@ public:
             }
         }
 
-        auto s = reinterpret_cast<SessionInfo*>(session);
-        s->operations_count++;
-        s->last_activity = std::time(nullptr);
+        
 
         return static_cast<int>(OFSErrorCodes::SUCCESS);
     }
@@ -1214,6 +1224,8 @@ public:
         s->operations_count++;
         s->last_activity = std::time(nullptr);
         uint32_t inode_num = findFileIndexByPath(path);
+        if(string(files[inode_num].owner) != string(s->user->username))
+            return static_cast<int>(OFSErrorCodes::ERROR_PERMISSION_DENIED);
         if (inode_num < 0) {
             return static_cast<int>(OFSErrorCodes::ERROR_INVALID_PATH);
         }
@@ -1225,11 +1237,9 @@ public:
     int createUser(void* session, const std::string& username, const std::string& password, UserRole role) {
         if (!session) return static_cast<int>(OFSErrorCodes::ERROR_INVALID_SESSION);
         
-        UserInfo* admin = static_cast<UserInfo*>(session);
-        if (admin->role != UserRole::ADMIN) {
-            return static_cast<int>(OFSErrorCodes::ERROR_PERMISSION_DENIED);
-        }
-        
+        SessionInfo* admin = static_cast<SessionInfo*>(session);
+        admin->last_activity = time(nullptr);
+        admin->operations_count++;
         UserInfo existing;
         if (users.find(username, existing)) {
             return static_cast<int>(OFSErrorCodes::ERROR_FILE_EXISTS);
@@ -1251,8 +1261,10 @@ public:
     int deleteUser(void* session, const std::string& username) {
         if (!session) return static_cast<int>(OFSErrorCodes::ERROR_INVALID_SESSION);
         
-        UserInfo* admin = static_cast<UserInfo*>(session);
-        if (admin->role != UserRole::ADMIN) {
+        SessionInfo* admin = static_cast<SessionInfo*>(session);
+        admin->last_activity = time(nullptr);
+        admin->operations_count++;
+        if (admin->user->role != UserRole::ADMIN) {
             return static_cast<int>(OFSErrorCodes::ERROR_PERMISSION_DENIED);
         }
         
@@ -1266,8 +1278,10 @@ public:
     int listUsers(void* session, UserInfo** user_list, int* count) {
         if (!session) return static_cast<int>(OFSErrorCodes::ERROR_INVALID_SESSION);
         
-        UserInfo* admin = static_cast<UserInfo*>(session);
-        if (admin->role != UserRole::ADMIN) {
+        SessionInfo* admin = static_cast<SessionInfo*>(session);
+        admin->last_activity = time(nullptr);
+        admin->operations_count++;
+        if (admin->user->role != UserRole::ADMIN) {
             return static_cast<int>(OFSErrorCodes::ERROR_PERMISSION_DENIED);
         }
         
@@ -1285,9 +1299,9 @@ public:
     int getSessionInfo(void* session, SessionInfo* info) {
         if (!session) return static_cast<int>(OFSErrorCodes::ERROR_INVALID_SESSION);
         
-        UserInfo* user = static_cast<UserInfo*>(session);
-        info->user = *user;
-        info->login_time = user->last_login;
+        SessionInfo* user = static_cast<SessionInfo*>(session);
+        info->user = user->user;
+        info->login_time = user->user->last_login;
         info->last_activity = std::time(nullptr);
         std::strncpy(info->session_id, "session_001", sizeof(info->session_id) - 1);
         
@@ -1325,7 +1339,7 @@ int user_login(void* instance, const char* username, const char* password, void*
 
 int user_logout(void* session) {
     if (session) {
-        delete static_cast<UserInfo*>(session);
+        delete static_cast<SessionInfo*>(session);
         return static_cast<int>(OFSErrorCodes::SUCCESS);
     }
     return static_cast<int>(OFSErrorCodes::ERROR_INVALID_SESSION);

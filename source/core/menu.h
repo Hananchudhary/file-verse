@@ -138,7 +138,7 @@ public:
             // Show session info
             SessionInfo info;
             if (get_session_info(instance, session, &info) == static_cast<int>(OFSErrorCodes::SUCCESS)) {
-                cout << "Role: " << (info.user.role == UserRole::ADMIN ? "Administrator" : "Normal User") << endl;
+                cout << "Role: " << (info.user->role == UserRole::ADMIN ? "Administrator" : "Normal User") << endl;
             }
             return true;
         } else {
@@ -314,7 +314,7 @@ public:
                 // Create User (Admin only)
                 SessionInfo info;
                 if (get_session_info(instance, session, &info) == static_cast<int>(OFSErrorCodes::SUCCESS)) {
-                    if (info.user.role != UserRole::ADMIN) {
+                    if (info.user->role != UserRole::ADMIN) {
                         cout << "✗ Permission denied. Only administrators can create users." << endl;
                         continue;
                     }
@@ -331,7 +331,7 @@ public:
                 // Delete User (Admin only)
                 SessionInfo info;
                 if (get_session_info(instance, session, &info) == static_cast<int>(OFSErrorCodes::SUCCESS)) {
-                    if (info.user.role != UserRole::ADMIN) {
+                    if (info.user->role != UserRole::ADMIN) {
                         cout << "✗ Permission denied. Only administrators can delete users." << endl;
                         continue;
                     }
@@ -345,7 +345,7 @@ public:
                 // List Users (Admin only)
                 SessionInfo info;
                 if (get_session_info(instance, session, &info) == static_cast<int>(OFSErrorCodes::SUCCESS)) {
-                    if (info.user.role != UserRole::ADMIN) {
+                    if (info.user->role != UserRole::ADMIN) {
                         cout << "✗ Permission denied. Only administrators can list users." << endl;
                         continue;
                     }
@@ -376,8 +376,8 @@ public:
                 printResult(result, "Get session info");
                 if (result == static_cast<int>(OFSErrorCodes::SUCCESS)) {
                     cout << "Session ID: " << info.session_id << endl;
-                    cout << "User: " << info.user.username << endl;
-                    cout << "Role: " << (info.user.role == UserRole::ADMIN ? "ADMIN" : "NORMAL") << endl;
+                    cout << "User: " << info.user->username << endl;
+                    cout << "Role: " << (info.user->role == UserRole::ADMIN ? "ADMIN" : "NORMAL") << endl;
                     cout << "Login Time: " << info.login_time << endl;
                     cout << "Last Activity: " << info.last_activity << endl;
                     cout << "Operations Count: " << info.operations_count << endl;
